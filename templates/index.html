@@ -244,19 +244,12 @@
     .table-panel { height: 60vh; }
   }
 
-  @media (max-width: 600px) {
-    /* Header: stack title + clock vertically */
-    header {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto auto;
-      gap: 6px;
-      padding: 10px 16px;
-    }
-    .header-container { gap: 10px; }
-    .header-text h1 { font-size: 16px; }
+  @media (max-width: 768px) {
+    /* Header: subtitle hidden, title + clock on one row */
     .header-text p { display: none; }
+    .header-text h1 { font-size: 16px; white-space: nowrap; }
     .header-icon { font-size: 22px; }
-    .timer-display { font-size: 22px; text-align: left; }
+    .timer-display { font-size: 22px; }
 
     /* Controls: tighter, full-width selects */
     .controls { padding: 10px 12px; gap: 8px; }
@@ -274,11 +267,8 @@
     /* Status bar */
     #status-bar { font-size: 12px; padding: 6px 12px; }
 
-    /* Mobile tabs */
-    .mob-tabs { display: flex; }
     .tables-wrap { grid-template-columns: 1fr; height: auto; }
     .table-panel { height: 60vh; }
-    .table-panel.mob-hidden { display: none; }
 
     .panel-header { padding: 6px 12px; }
     .panel-title { font-size: 13px; }
@@ -437,30 +427,6 @@
     display: none;
   }
 
-  /* ── Mobile tab bar (only shown on mobile via media query) ── */
-  .mob-tabs {
-    display: none;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
-  .mob-tab {
-    flex: 1;
-    padding: 10px 0;
-    background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
-    color: var(--fg-dim);
-    font-size: 14px;
-    font-weight: 600;
-    font-family: var(--font-main);
-    cursor: pointer;
-    transition: color var(--transition), border-color var(--transition);
-  }
-  .mob-tab.active {
-    color: var(--blue);
-    border-bottom-color: var(--blue);
-  }
-
   /* ── Source footer ── */
   footer {
     padding: 6px 24px;
@@ -535,12 +501,6 @@
 </div>
 
 <div id="error-banner" class="error-banner"></div>
-
-<!-- Mobile tab bar (hidden on desktop) -->
-<div class="mob-tabs" id="mob-tabs">
-  <button class="mob-tab active" id="tab-ab" onclick="switchTab('ab')">🔵 去程</button>
-  <button class="mob-tab"        id="tab-ba" onclick="switchTab('ba')">🟠 回程</button>
-</div>
 
 <div class="tables-wrap">
   <div class="table-panel" id="panel-ab">
@@ -882,27 +842,6 @@ function renderTables() {
     document.getElementById('count-ba'),
     toName, fromName, false
   );
-  // On mobile, reset to AB tab when new data arrives
-  if (window.innerWidth <= 600) switchTab('ab');
-}
-
-// ── Mobile tab switching ──────────────────────────────────────────────────
-function switchTab(which) {
-  const panelAB = document.getElementById('panel-ab');
-  const panelBA = document.getElementById('panel-ba');
-  const tabAB   = document.getElementById('tab-ab');
-  const tabBA   = document.getElementById('tab-ba');
-  if (which === 'ab') {
-    panelAB.classList.remove('mob-hidden');
-    panelBA.classList.add('mob-hidden');
-    tabAB.classList.add('active');
-    tabBA.classList.remove('active');
-  } else {
-    panelBA.classList.remove('mob-hidden');
-    panelAB.classList.add('mob-hidden');
-    tabBA.classList.add('active');
-    tabAB.classList.remove('active');
-  }
 }
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────
