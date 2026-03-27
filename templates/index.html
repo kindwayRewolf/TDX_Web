@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台鐵時刻表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #05111f;
+    --surface:  #0a1e33;
+    --panel:    #0d2540;
+    --border:   #163556;
+    --blue:     #4da8e8;
+    --blue-dim: #2a6a9e;
+    --gold:     #f5c842;
+    --green:    #56d98a;
+    --fg:       #c8dff0;
+    --fg-dim:   #6a8faa;
+    --reserved: #3a1e00;
+    --express:  #0d2e1a;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-main: 'Noto Sans TC', sans-serif;
+    --radius: 8px;
+    --transition: 0.18s ease;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-main);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #071a2e 0%, #0d2540 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 20px rgba(0,0,0,.5);
+  }
+
+  .header-container {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-content: flex-start;
+  }
+
+  .timer-display {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .header-icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .header-text h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: .04em;
+  }
+
+  .header-text p {
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 1px;
+    letter-spacing: .06em;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .ctrl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ctrl-group label {
+    font-size: 10px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-weight: 500;
+  }
+
+  select, input[type="text"], input[type="date"] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    border-radius: var(--radius);
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: var(--font-main);
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    height: 36px;
+  }
+
+  select:focus, input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px rgba(77,168,232,.18);
+  }
+
+  select { cursor: pointer; min-width: 130px; }
+  input[type="text"] { width: 70px; }
+  input[type="date"] { width: 140px; }
+
+  .swap-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--blue);
+    border-radius: var(--radius);
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition), color var(--transition);
+    align-self: flex-end;
+  }
+  .swap-btn:hover { background: var(--blue-dim); color: #fff; }
+
+  .btn {
+    height: 36px;
+    padding: 0 16px;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-main);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity var(--transition), transform var(--transition);
+    align-self: flex-end;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--blue); color: #03111f; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-secondary { background: var(--panel); border: 1px solid var(--border); color: var(--fg); }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+
+  .sep { width: 1px; height: 36px; background: var(--border); align-self: flex-end; }
+
+  /* ── Filters ── */
+  .filters {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .filter-label {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    user-select: none;
+    transition: all var(--transition);
+  }
+  .chip input { display: none; }
+  .chip-reserved  { background: rgba(58,30,0,.6);  color: var(--gold);  border-color: rgba(245,200,66,.2); }
+  .chip-local     { background: rgba(13,37,64,.8);  color: var(--blue);  border-color: rgba(77,168,232,.2); }
+  .chip-express   { background: rgba(13,46,26,.8); color: var(--green); border-color: rgba(86,217,138,.2); }
+  .chip.off { opacity: .38; filter: grayscale(.8); }
+
+  /* ── Status bar ── */
+  #status-bar {
+    padding: 7px 24px;
+    font-size: 15px;
+    color: var(--fg-dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+  }
+
+  .spinner {
+    display: none;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Main layout ── */
+  .tables-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    height: calc(100vh - 185px);
+  }
+
+  @media (max-width: 800px) {
+    .tables-wrap { grid-template-columns: 1fr; height: auto; }
+    .table-panel { height: 50vh; }
+  }
+
+  .table-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .table-panel:last-child { border-right: none; }
+
+  .panel-header {
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .panel-count {
+    font-size: 13px;
+    color: var(--fg-dim);
+    background: var(--panel);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  /* ── Table ── */
+  .table-scroll {
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .table-scroll::-webkit-scrollbar { width: 6px; }
+  .table-scroll::-webkit-scrollbar-track { background: var(--surface); }
+  .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: #061523;
+    color: var(--gold);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    z-index: 2;
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(22,53,86,.5);
+    transition: background var(--transition);
+  }
+  tbody tr:hover { background: rgba(77,168,232,.08) !important; }
+
+  tbody td {
+    padding: 9px 10px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  td.left { text-align: left; }
+
+  tr.type-reserved { background: rgba(58,30,0,.55); }
+  tr.type-express  { background: rgba(13,46,26,.55); }
+  tr.type-local    { background: transparent; }
+  tr.type-local:nth-child(even) { background: rgba(10,30,51,.5); }
+  tr.dimmed        { opacity: .35; }
+  tr.hour-break td:first-child { border-top: 2px solid var(--blue-dim); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }
+  .badge-reserved { background: rgba(245,200,66,.15); color: var(--gold); }
+  .badge-express  { background: rgba(86,217,138,.15); color: var(--green); }
+  .badge-local    { background: rgba(77,168,232,.15); color: var(--blue); }
+
+  .time-dep { font-family: var(--font-mono); font-weight: 600; color: #fff; font-size: 15px; }
+  .time-arr { font-family: var(--font-mono); color: var(--fg-dim); }
+  .duration { font-family: var(--font-mono); font-size: 13px; color: var(--fg-dim); }
+  .train-no { font-family: var(--font-mono); font-size: 14px; }
+  .remark   { font-size: 13px; color: var(--fg-dim); text-align: left; max-width: 240px; }
+  .remark-tag {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    margin: 1px 2px 1px 0;
+    white-space: nowrap;
+  }
+  .remark-line     { background: rgba(77,168,232,.18); color: #7ec8f5; }
+  .remark-schedule { background: rgba(245,200,66,.18); color: #f5d060; }
+  .remark-seat     { background: rgba(248,113,113,.18); color: #f87171; }
+  .remark-bike     { background: rgba(86,217,138,.18); color: var(--green); }
+
+  /* ── Empty / error states ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 10px;
+    color: var(--fg-dim);
+    font-size: 13px;
+    opacity: .6;
+  }
+  .empty-state .icon { font-size: 36px; }
+
+  .error-banner {
+    background: rgba(220,50,50,.15);
+    border: 1px solid rgba(220,50,50,.3);
+    color: #f87171;
+    padding: 10px 16px;
+    margin: 12px 24px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    display: none;
+  }
+
+  /* ── Source footer ── */
+  footer {
+    padding: 6px 24px;
+    font-size: 11px;
+    color: var(--fg-dim);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-container">
+    <div class="header-icon">🚆</div>
+    <div class="header-text">
+      <h1>台鐵時刻表</h1>
+      <p>TDX Open API — 交通部運輸資料流通服務</p>
+    </div>
+  </div>
+  <div class="timer-display" id="timer">00:00:00</div>
+</header>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <label>出發站</label>
+    <select id="from-sel"></select>
+  </div>
+
+  <button class="swap-btn" id="swap-btn" title="互換車站">⇄</button>
+
+  <div class="ctrl-group">
+    <label>抵達站</label>
+    <select id="to-sel"></select>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label>起始時間</label>
+    <input type="text" id="start-time" value="" placeholder="HH:MM" maxlength="5">
+  </div>
+
+  <button class="btn btn-primary" id="query-btn">🔍 查詢常態班表</button>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group">
+    <label>指定日期</label>
+    <input type="date" id="date-input">
+  </div>
+
+  <button class="btn btn-secondary" id="daily-btn">📅 查詢當日班次</button>
+</div>
+
+<div class="filters">
+  <span class="filter-label">顯示車種</span>
+  <label class="chip chip-reserved" id="chip-reserved">
+    <input type="checkbox" checked> 🟡 對號列車
+  </label>
+  <label class="chip chip-local" id="chip-local">
+    <input type="checkbox" checked> 🔵 區間車
+  </label>
+  <label class="chip chip-express" id="chip-express">
+    <input type="checkbox" checked> 🟢 區間快
+  </label>
+</div>
+
+<div id="status-bar">
+  <div class="spinner" id="spinner"></div>
+  <span id="status-text">請選擇車站後按「查詢」</span>
+</div>
+
+<div id="error-banner" class="error-banner"></div>
+
+<div class="tables-wrap">
+  <div class="table-panel" id="panel-ab">
+    <div class="panel-header">
+      <div class="panel-title" id="title-ab">🔵 去程</div>
+      <span class="panel-count" id="count-ab">—</span>
+    </div>
+    <div class="table-scroll" id="scroll-ab">
+      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
+    </div>
+  </div>
+  <div class="table-panel" id="panel-ba">
+    <div class="panel-header">
+      <div class="panel-title" id="title-ba">🟠 回程</div>
+      <span class="panel-count" id="count-ba">—</span>
+    </div>
+    <div class="table-scroll" id="scroll-ba">
+      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
+    </div>
+  </div>
+</div>
+
+<footer id="source-footer">資料來源：TDX Open API（交通部運輸資料流通服務）</footer>
+
+<script>
+// ── Station data injected from Flask ──────────────────────────────────────
+const STATIONS = {{ stations | tojson }};
+
+// ── State ─────────────────────────────────────────────────────────────────
+let trainsAB = [], trainsBA = [];let dailyBikeMap = {};  // trainNo → bool, populated from last daily query
+
+
+// ── Client-side Cache Manager ─────────────────────────────────────────────
+const CacheManager = {
+  OD_TTL:    10 * 60 * 1000,        // 10 minutes in ms
+  DAILY_TTL: 7  * 24 * 3600 * 1000, // 7 days in ms
+  MAX_KEYS:  40,                     // evict oldest beyond this limit
+
+  _key(type, ...parts) {
+    return `tdx_${type}_${parts.join('_')}`;
+  },
+
+  get(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (Date.now() > entry.expires_at) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return entry.data;
+    } catch { return null; }
+  },
+
+  set(key, data, ttl) {
+    try {
+      this._evictIfNeeded();
+      localStorage.setItem(key, JSON.stringify({
+        data,
+        expires_at: Date.now() + ttl,
+        saved_at:   Date.now(),
+      }));
+    } catch (e) {
+      // localStorage full — evict aggressively then retry once
+      this._evictOldest(10);
+      try { localStorage.setItem(key, JSON.stringify({ data, expires_at: Date.now() + ttl, saved_at: Date.now() })); }
+      catch { /* give up silently */ }
+    }
+  },
+
+  getOD(fromCode, toCode) {
+    return this.get(this._key('od', fromCode, toCode));
+  },
+  setOD(fromCode, toCode, data) {
+    this.set(this._key('od', fromCode, toCode), data, this.OD_TTL);
+  },
+  evictOD(fromCode, toCode) {
+    try {
+      localStorage.removeItem(this._key('od', fromCode, toCode));
+      localStorage.removeItem(this._key('od', toCode, fromCode));
+    } catch {}
+  },
+
+  // Patch the regular OD localStorage cache with BikeFlag from daily trains,
+  // then evict so the next regular fetch gets fresh data from the server too.
+  patchODWithDailyBike(fromCode, toCode, dailyAB, dailyBA) {
+    // Build trainNo → bike map from daily trains (both directions)
+    const bikeMap = {};
+    [...(dailyAB || []), ...(dailyBA || [])].forEach(t => {
+      bikeMap[t.train_no] = t.bike;
+    });
+    if (!Object.keys(bikeMap).length) return;
+
+    // Patch and re-save both OD direction caches if they exist
+    [[fromCode, toCode], [toCode, fromCode]].forEach(([fc, tc]) => {
+      const key = this._key('od', fc, tc);
+      const entry = this.get(key);
+      if (!entry) return;
+      let patched = false;
+      ['ab', 'ba'].forEach(dir => {
+        (entry[dir] || []).forEach(t => {
+          if (t.train_no in bikeMap && t.bike !== bikeMap[t.train_no]) {
+            t.bike = bikeMap[t.train_no];
+            patched = true;
+          }
+        });
+      });
+      if (patched) this.set(key, entry, this.OD_TTL);
+    });
+
+    // Also evict so the server re-computes with synced BikeFlag on next regular query
+    this.evictOD(fromCode, toCode);
+  },
+
+  getDaily(fromCode, toCode, dateStr) {
+    return this.get(this._key('daily', fromCode, toCode, dateStr));
+  },
+  setDaily(fromCode, toCode, dateStr, data) {
+    this.set(this._key('daily', fromCode, toCode, dateStr), data, this.DAILY_TTL);
+  },
+
+  _evictIfNeeded() {
+    const keys = this._tdxKeys();
+    if (keys.length >= this.MAX_KEYS) this._evictOldest(keys.length - this.MAX_KEYS + 1);
+  },
+
+  _evictOldest(n) {
+    this._tdxKeys()
+      .map(k => { try { return { k, t: JSON.parse(localStorage.getItem(k)).saved_at }; } catch { return { k, t: 0 }; } })
+      .sort((a, b) => a.t - b.t)
+      .slice(0, n)
+      .forEach(({ k }) => localStorage.removeItem(k));
+  },
+
+  _tdxKeys() {
+    return Object.keys(localStorage).filter(k => k.startsWith('tdx_od_') || k.startsWith('tdx_daily_'));
+  },
+
+  stats() {
+    const keys = this._tdxKeys();
+    const bytes = keys.reduce((s, k) => s + (localStorage.getItem(k) || '').length * 2, 0);
+    return { entries: keys.length, kb: (bytes / 1024).toFixed(1) };
+  },
+};
+
+// ── Saved preferences ─────────────────────────────────────────────────────
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem('tdx_prefs') || '{}'); } catch { return {}; }
+}
+function savePrefs(p) {
+  try { localStorage.setItem('tdx_prefs', JSON.stringify(p)); } catch {}
+}
+
+// ── Populate station dropdowns ────────────────────────────────────────────
+function buildStationOptions(sel, selected) {
+  sel.innerHTML = '';
+  STATIONS.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.code;
+    opt.textContent = `${s.name}（${s.code}）`;
+    if (s.code === selected) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+const fromSel = document.getElementById('from-sel');
+const toSel   = document.getElementById('to-sel');
+const prefs   = loadPrefs();
+
+buildStationOptions(fromSel, prefs.from || '0970');
+buildStationOptions(toSel,   prefs.to   || '0990');
+
+// Default start time to 00:00 to show all trains on page load
+const now = new Date();
+document.getElementById('start-time').value = '00:00';
+
+// Default date to today
+document.getElementById('date-input').value = now.toISOString().slice(0, 10);
+
+// ── Swap ──────────────────────────────────────────────────────────────────
+document.getElementById('swap-btn').addEventListener('click', () => {
+  const tmp = fromSel.value;
+  fromSel.value = toSel.value;
+  toSel.value = tmp;
+});
+
+// ── Filters ───────────────────────────────────────────────────────────────
+const chipReserved = document.getElementById('chip-reserved');
+const chipLocal    = document.getElementById('chip-local');
+const chipExpress  = document.getElementById('chip-express');
+[chipReserved, chipLocal, chipExpress].forEach(chip => {
+  chip.addEventListener('click', () => {
+    const cb = chip.querySelector('input');
+    cb.checked = !cb.checked;
+    chip.classList.toggle('off', !cb.checked);
+    renderTables();
+  });
+});
+
+function filterOn(id) {
+  return document.querySelector(`#${id} input`).checked;
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────
+function setStatus(msg, loading = false) {
+  document.getElementById('status-text').textContent = msg;
+  document.getElementById('spinner').style.display = loading ? 'block' : 'none';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ── Train category ────────────────────────────────────────────────────────
+function getCategory(t) {
+  if (t.train_name.startsWith('區間快')) return 'express';
+  if (t.train_name.startsWith('區間'))   return 'local';
+  return 'reserved';
+}
+
+// ── Sort trains — show closest undeparted train first ──────────────────────
+function sortTrainsByClosestUndeparted(trains) {
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  return trains.sort((a, b) => {
+    const aUndeparted = a.dep >= currentTime;
+    const bUndeparted = b.dep >= currentTime;
+
+    // Both undeparted: sort by ascending (earliest/closest first)
+    if (aUndeparted && bUndeparted) {
+      return a.dep.localeCompare(b.dep);
+    }
+    // Only a is undeparted: a comes first
+    if (aUndeparted) return -1;
+    // Only b is undeparted: b comes first
+    if (bUndeparted) return 1;
+    // Both departed: sort by descending (most recent first)
+    return b.dep.localeCompare(a.dep);
+  });
+}
+
+// ── Remark pill renderer ──────────────────────────────────────────────────
+const _LINE_NAMES = new Set(['山線', '海線', '成追線']);
+function remarkTags(remark) {
+  if (!remark) return '';
+  return remark.split('\u3000').map(p => {
+    p = p.trim();
+    if (!p) return '';
+    let cls = 'remark-schedule';
+    if (_LINE_NAMES.has(p)) cls = 'remark-line';
+    else if (p.includes('座票') || p.includes('無座')) cls = 'remark-seat';
+    return `<span class="remark-tag ${cls}">${p}</span>`;
+  }).join('');
+}
+
+// ── Render one table ──────────────────────────────────────────────────────
+function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB) {
+  const showReserved = filterOn('chip-reserved');
+  const showLocal    = filterOn('chip-local');
+  const showExpress  = filterOn('chip-express');
+  const startTime    = document.getElementById('start-time').value.trim() || '00:00';
+
+  const filtered = trains.filter(t => {
+    const cat = getCategory(t);
+    if (cat === 'reserved' && !showReserved) return false;
+    if (cat === 'local'    && !showLocal)    return false;
+    if (cat === 'express'  && !showExpress)  return false;
+    if (t.dep < startTime) return false;
+    return true;
+  });
+
+  titleEl.textContent = `${isAB ? '🔵' : '🟠'} ${fromName} → ${toName}`;
+  countEl.textContent = `${filtered.length} 班`;
+
+  if (!filtered.length) {
+    scrollEl.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><span>無符合班次</span></div>`;
+    return;
+  }
+
+  let prevHour = null;
+  const rows = filtered.map((t, i) => {
+    const cat = getCategory(t);
+    const badgeClass = cat === 'reserved' ? 'badge-reserved' : cat === 'express' ? 'badge-express' : 'badge-local';
+    let trClass = `type-${cat}`;
+    const curHour = parseInt(t.dep.split(':')[0]);
+    const hourBreak = prevHour !== null && curHour > prevHour;
+    if (hourBreak) trClass += ' hour-break';
+    prevHour = curHour;
+
+    // Normalize bike flag — apply daily override if available, else use server value
+    const hasBike = t.train_no in dailyBikeMap ? dailyBikeMap[t.train_no] : Boolean(t.bike);
+    const bikeTag = hasBike ? '<span class="remark-tag remark-bike">\ud83d\udeb2</span>' : '';
+    const remarkHtml = bikeTag + remarkTags(t.remark);
+    return `<tr class="${trClass}">
+      <td><span class="badge ${badgeClass}">${t.train_type}</span></td>
+      <td class="train-no">${t.train_no}</td>
+      <td class="time-dep">${t.dep}</td>
+      <td class="time-arr">${t.arr}</td>
+      <td class="duration">${t.duration}</td>
+      <td class="left remark">${remarkHtml}</td>
+    </tr>`;
+  }).join('');
+
+  scrollEl.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>車種</th><th>車次</th><th>出發</th><th>抵達</th><th>時長</th><th style="text-align:left">備註</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Render both tables ────────────────────────────────────────────────────
+function renderTables() {
+  const fromCode = fromSel.value;
+  const toCode   = toSel.value;
+  const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
+  const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
+
+  // Sort trains before rendering
+  const sortedAB = sortTrainsByClosestUndeparted([...trainsAB]);
+  const sortedBA = sortTrainsByClosestUndeparted([...trainsBA]);
+
+  renderTable(
+    document.getElementById('scroll-ab'),
+    sortedAB,
+    document.getElementById('title-ab'),
+    document.getElementById('count-ab'),
+    fromName, toName, true
+  );
+  renderTable(
+    document.getElementById('scroll-ba'),
+    sortedBA,
+    document.getElementById('title-ba'),
+    document.getElementById('count-ba'),
+    toName, fromName, false
+  );
+}
+
+// ── Fetch helpers ─────────────────────────────────────────────────────────
+async function fetchTrains(url, statusMsg) {
+  showError('');
+  setStatus(statusMsg, true);
+  document.getElementById('query-btn').disabled = true;
+  document.getElementById('daily-btn').disabled = true;
+
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    return data;
+  } catch (e) {
+    showError(`查詢失敗：${e.message}`);
+    setStatus('查詢失敗');
+    return null;
+  } finally {
+    document.getElementById('query-btn').disabled = false;
+    document.getElementById('daily-btn').disabled = false;
+  }
+}
+
+// ── General timetable query ───────────────────────────────────────────────
+async function queryGeneral() {
+  const fromCode = fromSel.value;
+  const toCode   = toSel.value;
+  if (fromCode === toCode) { showError('出發站與抵達站不能相同'); return; }
+
+  const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
+  const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
+  savePrefs({ from: fromCode, to: toCode });
+
+  // ── Client cache hit ──
+  const cached = CacheManager.getOD(fromCode, toCode);
+  if (cached) {
+    trainsAB = cached.ab || [];
+    trainsBA = cached.ba || [];
+    renderTables();
+    const s = CacheManager.stats();
+    setStatus(`💾 本機快取　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
+    document.getElementById('source-footer').textContent = '資料來源：本機快取（localStorage）　常態班表';
+    return;
+  }
+
+  // ── Cache miss — fetch from server ──
+  const data = await fetchTrains(`/api/trains?from=${fromCode}&to=${toCode}`, '查詢常態班表中…');
+  if (!data) return;
+
+  trainsAB = data.ab || [];
+  trainsBA = data.ba || [];
+  CacheManager.setOD(fromCode, toCode, { ab: trainsAB, ba: trainsBA });
+  renderTables();
+
+  const src = data.cached ? '📦 伺服器快取' : '🔄 即時';
+  const s = CacheManager.stats();
+  setStatus(`${src}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
+  document.getElementById('source-footer').textContent = '資料來源：TDX Open API（交通部運輸資料流通服務）　常態班表';
+}
+
+// ── Daily query ───────────────────────────────────────────────────────────
+async function queryDaily() {
+  const fromCode = fromSel.value;
+  const toCode   = toSel.value;
+  const dateStr  = document.getElementById('date-input').value;
+  if (fromCode === toCode) { showError('出發站與抵達站不能相同'); return; }
+  if (!dateStr) { showError('請選擇日期'); return; }
+
+  const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
+  const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
+
+  // ── Client cache hit ──
+  const cached = CacheManager.getDaily(fromCode, toCode, dateStr);
+  if (cached) {
+    trainsAB = cached.ab || [];
+    trainsBA = cached.ba || [];
+    // Rebuild dailyBikeMap from cached trains
+    dailyBikeMap = {};
+    [...trainsAB, ...trainsBA].forEach(t => { dailyBikeMap[t.train_no] = Boolean(t.bike); });
+    renderTables();
+    const s = CacheManager.stats();
+    setStatus(`💾 本機快取　${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
+    document.getElementById('source-footer').textContent = `資料來源：本機快取（localStorage）　${dateStr} 實際行駛班次`;
+    return;
+  }
+
+  // ── Cache miss — fetch from server ──
+  const data = await fetchTrains(
+    `/api/trains/daily?from=${fromCode}&to=${toCode}&date=${dateStr}`,
+    `查詢 ${dateStr} 班次…`
+  );
+  if (!data) return;
+
+  trainsAB = data.ab || [];
+  trainsBA = data.ba || [];
+  // Populate dailyBikeMap for real-time override in regular table
+  dailyBikeMap = {};
+  [...trainsAB, ...trainsBA].forEach(t => { dailyBikeMap[t.train_no] = Boolean(t.bike); });
+  CacheManager.setDaily(fromCode, toCode, dateStr, { ab: trainsAB, ba: trainsBA });
+  renderTables();
+
+  const s = CacheManager.stats();
+  setStatus(`📅 ${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
+  document.getElementById('source-footer').textContent =
+    `資料來源：TDX Open API（交通部運輸資料流通服務）　${dateStr} 實際行駛班次`;
+}
+
+// ── Event bindings ────────────────────────────────────────────────────────
+document.getElementById('query-btn').addEventListener('click', queryGeneral);
+document.getElementById('daily-btn').addEventListener('click', queryDaily);
+document.getElementById('start-time').addEventListener('change', renderTables);
+
+// ── Timer update ──────────────────────────────────────────────────────────
+function updateTimer() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('timer').textContent = `${hours}:${minutes}:${seconds}`;
+}
+
+// Update timer immediately and every second
+updateTimer();
+setInterval(updateTimer, 1000);
+
+// Auto-query on load with saved prefs — fetch today's timetable
+queryDaily();
+</script>
+// page load → fetch(/health)
+<script>
+fetch("/health").catch(() => {});
+</script>
+</body>
+</html>
