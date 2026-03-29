@@ -30,10 +30,12 @@ _token_cache: dict = {}          # {"access_token": ..., "expires_at": ...}
 _timetable_cache: dict = {}      # {"trains": [...], "fetched_at": float, "expire_iso": str}
 _daily_cache: dict = {}          # {date_str: {"trains": [...], "fetched_at": float}}
 _od_cache: dict = {}             # {"{fc}_{tc}": {"ab": [...], "ba": [...], "fetched_at": float}}
+_liveboard_cache: dict = {}      # {"trains": {train_no: delay_min}, "fetched_at": float}
 _cache_lock = threading.Lock()
 
-OD_CACHE_TTL    = 10 * 60          # 10 minutes  (matches client TTL)
-DAILY_CACHE_TTL = 7 * 24 * 3600   # 7 days      (matches client TTL)
+OD_CACHE_TTL        = 10 * 60          # 10 minutes  (matches client TTL)
+DAILY_CACHE_TTL     = 7 * 24 * 3600   # 7 days      (matches client TTL)
+LIVEBOARD_CACHE_TTL = 60               # 60 seconds  (live data, short TTL)
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
 STATIONS: dict[str, str] = {
@@ -357,6 +359,44 @@ def api_trains_daily():
         return jsonify({"error": f"TDX API error: {e}"}), 502
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/api/liveboard")
+def api_liveboard():
+    """Return current delay times for trains at a given station. Cached for 60 seconds."""
+    station = request.args.get("station", "").strip()
+    if not station:
+        return jsonify({"error": "Missing 'station' parameter"}), 400
+    if station not in _VALID_CODES:
+        return jsonify({"error": "Invalid station code"}), 400
+
+    with _cache_lock:
+        entry      = _liveboard_cache.get(station)
+        fetched_at = entry["fetched_at"] if entry else 0
+    if entry and time.time() - fetched_at < LIVEBOARD_CACHE_TTL:
+        return jsonify({"delays": entry["delays"], "cached": True, "fetched_at": fetched_at})
+
+    try:
+        url = (
+            f"https://tdx.transportdata.tw/api/basic/v2/Rail/TRA"
+            f"/LiveBoard/Station/{station}?$format=JSON"
+        )
+        data = api_get(url)
+        # v2 LiveBoard returns a flat list directly
+        trains_raw = data if isinstance(data, list) else data.get("TrainLiveBoards", [])
+        delays = {
+            t["TrainNo"]: int(t.get("DelayTime", 0))
+            for t in trains_raw
+            if t.get("TrainNo")
+        }
+        now = time.time()
+        with _cache_lock:
+            _liveboard_cache[station] = {"delays": delays, "fetched_at": now}
+        return jsonify({"delays": delays, "cached": False, "fetched_at": now})
+    except requests.HTTPError as e:
+        return jsonify({"error": f"TDX API error: {e}"}), 502
+    except Exception:
+        return jsonify({"error": "Internal server error"}), 500
+
 
 @app.route("/health")
 def health():

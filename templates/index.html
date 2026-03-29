@@ -170,6 +170,10 @@
   .btn-primary:hover { opacity: .88; }
   .btn-secondary { background: var(--panel); border: 1px solid var(--border); color: var(--fg); }
   .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-live { background: var(--panel); border: 1px solid var(--border); color: var(--fg-dim); }
+  .btn-live:hover { border-color: #facc15; color: #facc15; }
+  .btn-live.live-on { border-color: #4ade80; color: #4ade80; background: rgba(74,222,128,.08); }
+  .btn-live.live-loading { opacity: .6; cursor: default; }
 
   .sep { width: 1px; height: 36px; background: var(--border); align-self: flex-end; }
 
@@ -208,6 +212,7 @@
   .chip-local     { background: rgba(13,37,64,.8);  color: var(--blue);  border-color: rgba(77,168,232,.2); }
   .chip-express   { background: rgba(13,46,26,.8); color: var(--green); border-color: rgba(86,217,138,.2); }
   .chip.off { opacity: .38; filter: grayscale(.8); }
+  .row-past td { opacity: 0.38; }
 
   /* ── Status bar ── */
   #status-bar {
@@ -369,7 +374,7 @@
   tr.type-local    { background: transparent; }
   tr.type-local:nth-child(even) { background: rgba(10,30,51,.5); }
   tr.dimmed        { opacity: .35; }
-  tr.hour-break td:first-child { border-top: 2px solid var(--blue-dim); }
+  tr.hour-break td:nth-child(-n+3) { border-top: 2px solid var(--blue-dim); }
 
   .badge {
     display: inline-block;
@@ -401,6 +406,7 @@
   .remark-schedule { background: rgba(245,200,66,.18); color: #f5d060; }
   .remark-seat     { background: rgba(248,113,113,.18); color: #f87171; }
   .remark-bike     { background: rgba(86,217,138,.18); color: var(--green); }
+  .remark-delay    { background: rgba(248,113,113,.25); color: #f87171; font-weight: 700; }
 
   /* ── Empty / error states ── */
   .empty-state {
@@ -465,11 +471,6 @@
 
   <div class="sep"></div>
 
-  <div class="ctrl-group">
-    <label>起始時間</label>
-    <input type="text" id="start-time" value="" placeholder="HH:MM" maxlength="5">
-  </div>
-
   <button class="btn btn-primary" id="query-btn">🔍 查詢常態班表</button>
 
   <div class="sep"></div>
@@ -480,6 +481,10 @@
   </div>
 
   <button class="btn btn-secondary" id="daily-btn">📅 查詢當日班次</button>
+
+  <div class="sep"></div>
+
+  <button class="btn btn-live" id="live-btn">🟡 即時狀態</button>
 </div>
 
 <div class="filters">
@@ -530,7 +535,10 @@
 const STATIONS = {{ stations | tojson }};
 
 // ── State ─────────────────────────────────────────────────────────────────
-let trainsAB = [], trainsBA = [];let dailyBikeMap = {};  // trainNo → bool, populated from last daily query
+let trainsAB = [], trainsBA = [];
+let dailyBikeMap  = {};   // trainNo → bool, populated from last daily query
+let liveDelayMap  = {};   // trainNo → delay minutes, populated from liveboard
+let _nextTrainTimer = null; // setTimeout handle for next-train auto-refresh
 
 
 // ── Client-side Cache Manager ─────────────────────────────────────────────
@@ -674,9 +682,7 @@ const prefs   = loadPrefs();
 buildStationOptions(fromSel, prefs.from || '0970');
 buildStationOptions(toSel,   prefs.to   || '0990');
 
-// Default start time to 00:00 to show all trains on page load
 const now = new Date();
-document.getElementById('start-time').value = '00:00';
 
 // Default date to today
 document.getElementById('date-input').value = now.toISOString().slice(0, 10);
@@ -686,6 +692,7 @@ document.getElementById('swap-btn').addEventListener('click', () => {
   const tmp = fromSel.value;
   fromSel.value = toSel.value;
   toSel.value = tmp;
+  queryGeneral();
 });
 
 // ── Filters ───────────────────────────────────────────────────────────────
@@ -765,14 +772,14 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
   const showReserved = filterOn('chip-reserved');
   const showLocal    = filterOn('chip-local');
   const showExpress  = filterOn('chip-express');
-  const startTime    = document.getElementById('start-time').value.trim() || '00:00';
+  const _now  = new Date();
+  const nowHM = `${String(_now.getHours()).padStart(2,'0')}:${String(_now.getMinutes()).padStart(2,'0')}`;
 
   const filtered = trains.filter(t => {
     const cat = getCategory(t);
     if (cat === 'reserved' && !showReserved) return false;
     if (cat === 'local'    && !showLocal)    return false;
     if (cat === 'express'  && !showExpress)  return false;
-    if (t.dep < startTime) return false;
     return true;
   });
 
@@ -789,6 +796,7 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
     const cat = getCategory(t);
     const badgeClass = cat === 'reserved' ? 'badge-reserved' : cat === 'express' ? 'badge-express' : 'badge-local';
     let trClass = `type-${cat}`;
+    if (t.dep < nowHM) trClass += ' row-past';
     const curHour = parseInt(t.dep.split(':')[0]);
     const hourBreak = prevHour !== null && curHour > prevHour;
     if (hourBreak) trClass += ' hour-break';
@@ -798,7 +806,7 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
     const hasBike = t.train_no in dailyBikeMap ? dailyBikeMap[t.train_no] : Boolean(t.bike);
     const bikeTag = hasBike ? '<span class="remark-tag remark-bike">\ud83d\udeb2</span>' : '';
     const remarkHtml = bikeTag + remarkTags(t.remark);
-    return `<tr class="${trClass}">
+    return `<tr class="${trClass}" data-dep="${t.dep}" data-train-no="${t.train_no}">
       <td><span class="badge ${badgeClass}">${t.train_type}</span></td>
       <td class="train-no">${t.train_no}</td>
       <td class="time-dep">${t.dep}</td>
@@ -815,6 +823,33 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  // Scroll so next upcoming train is the 3rd visible row (show 2 past rows above)
+  let nextRow = null;
+  for (const row of scrollEl.querySelectorAll('tbody tr[data-dep]')) {
+    if (row.dataset.dep >= nowHM) { nextRow = row; break; }
+  }
+  if (nextRow) {
+    const ROW_H = nextRow.offsetHeight || 44;
+    const rowTop = nextRow.offsetTop; // relative to table top
+    scrollEl.scrollTop = Math.max(0, rowTop - ROW_H * 2);
+
+    // Schedule auto-refresh at next departure time + 1 s (only from the AB panel)
+    if (isAB) {
+      if (_nextTrainTimer) clearTimeout(_nextTrainTimer);
+      const depParts = nextRow.dataset.dep.split(':');
+      const depMs = new Date().setHours(Number(depParts[0]), Number(depParts[1]), 1, 0);
+      const msUntil = depMs - Date.now();
+      if (msUntil > 0) {
+        _nextTrainTimer = setTimeout(() => {
+          renderTables();
+          fetchLive();
+        }, msUntil);
+      }
+    }
+  }
+  // Overlay live delay data if available
+  overlayDelays(scrollEl);
 }
 
 // ── Render both tables ────────────────────────────────────────────────────
@@ -824,9 +859,9 @@ function renderTables() {
   const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
   const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
 
-  // Sort trains before rendering
-  const sortedAB = sortTrainsByClosestUndeparted([...trainsAB]);
-  const sortedBA = sortTrainsByClosestUndeparted([...trainsBA]);
+  // Keep server chronological order; renderTable will scroll to next train
+  const sortedAB = [...trainsAB];
+  const sortedBA = [...trainsBA];
 
   renderTable(
     document.getElementById('scroll-ab'),
@@ -885,6 +920,7 @@ async function queryGeneral() {
     const s = CacheManager.stats();
     setStatus(`💾 本機快取　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
     document.getElementById('source-footer').textContent = '資料來源：本機快取（localStorage）　常態班表';
+    fetchLive();
     return;
   }
 
@@ -901,6 +937,7 @@ async function queryGeneral() {
   const s = CacheManager.stats();
   setStatus(`${src}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
   document.getElementById('source-footer').textContent = '資料來源：TDX Open API（交通部運輸資料流通服務）　常態班表';
+  fetchLive();
 }
 
 // ── Daily query ───────────────────────────────────────────────────────────
@@ -948,12 +985,66 @@ async function queryDaily() {
   setStatus(`📅 ${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
   document.getElementById('source-footer').textContent =
     `資料來源：TDX Open API（交通部運輸資料流通服務）　${dateStr} 實際行駛班次`;
+  fetchLive();
+}
+
+// ── Live delay overlay ─────────────────────────────────────────────────────
+function overlayDelays(containerEl) {
+  if (!containerEl) return;
+  for (const row of containerEl.querySelectorAll('tr[data-train-no]')) {
+    const no    = row.dataset.trainNo;
+    const delay = liveDelayMap[no];
+    const cell  = row.querySelector('td.remark');
+    if (!cell) continue;
+    // Remove any previous delay tag
+    const prev = cell.querySelector('.remark-delay');
+    if (prev) prev.remove();
+    if (delay > 0) {
+      const tag = document.createElement('span');
+      tag.className = 'remark-tag remark-delay';
+      tag.textContent = `誤${delay}分`;
+      cell.prepend(tag);
+    }
+  }
+}
+
+async function fetchLive() {
+  const btn      = document.getElementById('live-btn');
+  const fromCode = fromSel.value;
+  const toCode   = toSel.value;
+  btn.classList.add('live-loading');
+  btn.disabled = true;
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch(`/api/liveboard?station=${fromCode}`),
+      fetch(`/api/liveboard?station=${toCode}`),
+    ]);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    if (!r1.ok) throw new Error(d1.error || r1.statusText);
+    if (!r2.ok) throw new Error(d2.error || r2.statusText);
+    liveDelayMap = { ...d1.delays, ...d2.delays };
+    btn.classList.remove('live-loading');
+    btn.classList.add('live-on');
+    const fetched = Math.max(d1.fetched_at, d2.fetched_at);
+    const t  = new Date(fetched * 1000);
+    const hm = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+    btn.textContent = `🟢 即時 ${hm}`;
+    overlayDelays(document.getElementById('scroll-ab'));
+    overlayDelays(document.getElementById('scroll-ba'));
+  } catch (e) {
+    btn.classList.remove('live-loading');
+    showError(`即時狀態無法取得：${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Event bindings ────────────────────────────────────────────────────────
 document.getElementById('query-btn').addEventListener('click', queryGeneral);
 document.getElementById('daily-btn').addEventListener('click', queryDaily);
-document.getElementById('start-time').addEventListener('change', renderTables);
+document.getElementById('live-btn').addEventListener('click', fetchLive);
+fromSel.addEventListener('change', queryGeneral);
+toSel.addEventListener('change', queryGeneral);
 
 // ── Timer update ──────────────────────────────────────────────────────────
 function updateTimer() {
