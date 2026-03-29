@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>台鐵 — 列車 {{ train_no }}</title>
+<!-- Detect mobile BEFORE first paint to avoid layout flash -->
+<script>
+  (function(){
+    var m = window.innerWidth < 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    document.documentElement.classList.add(m ? 'is-mobile' : 'is-desktop');
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -395,6 +402,53 @@
     .stop-table thead th { padding: 7px 8px; font-size: 11px; top: 52px; }
     .station-duo { grid-template-columns: 1fr; }
   }
+
+  /* ── Mobile-specific overrides (is-mobile class set by JS) ── */
+  .is-mobile .header-route   { display: none; }   /* save header space */
+  .is-mobile .train-meta     { display: none; }   /* hide meta chips */
+
+  /* Collapsible Alert / News on mobile */
+  .is-mobile .collapsible-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.28s ease;
+  }
+  .is-mobile .collapsible-body.open {
+    max-height: 600px;
+  }
+  .is-mobile .section-title {
+    cursor: pointer;
+    user-select: none;
+  }
+  .is-mobile .section-title::after {
+    content: ' ▾';
+    font-size: 10px;
+    opacity: .55;
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+  .is-mobile .section-title.open::after {
+    transform: rotate(180deg);
+  }
+
+  /* Stop table: hide seq (#) and arrival columns on mobile */
+  .is-mobile .stop-table .col-seq,
+  .is-mobile .stop-table .col-arr { display: none; }
+
+  /* Station boards: horizontal scroll on mobile */
+  .is-mobile .station-duo {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 10px;
+    padding-bottom: 4px;
+    scroll-snap-type: x mandatory;
+  }
+  .is-mobile .station-duo > div {
+    min-width: 75vw;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
@@ -408,13 +462,17 @@
 
 <!-- ── Alert / News ─────────────────────────────────────────────────────── -->
 <div class="section" id="alert-section">
-  <div class="section-title">📢 通阻通知</div>
-  <div id="alert-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  <div class="section-title" id="alert-title" onclick="toggleSection('alert')">📢 通阻通知</div>
+  <div class="collapsible-body" id="alert-body">
+    <div id="alert-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  </div>
 </div>
 
 <div class="section" id="news-section">
-  <div class="section-title">📰 最新消息</div>
-  <div id="news-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  <div class="section-title" id="news-title" onclick="toggleSection('news')">📰 最新消息</div>
+  <div class="collapsible-body" id="news-body">
+    <div id="news-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  </div>
 </div>
 
 <!-- ── Station live boards ────────────────────────────────────────────────── -->
@@ -664,10 +722,10 @@ function renderTrain(data, liveData) {
     const timeClass = (isFrom || isTo || isCurr) ? 'stop-time main' : 'stop-time';
     const curr      = isCurr ? ' data-current="true"' : '';
     return `<tr class="${trClass}"${curr}>
-      <td class="stop-seq">${s.seq}</td>
+      <td class="stop-seq col-seq">${s.seq}</td>
       <td><span class="${nameClass}">${s.station_name || s.station_id}</span>${label}</td>
-      <td class="${timeClass}">${s.arrival  || '—'}</td>
-      <td class="${timeClass}">${s.departure || '—'}</td>
+      <td class="${timeClass} col-arr">${s.arrival  || '\u2014'}</td>
+      <td class="${timeClass}">${s.departure || '\u2014'}</td>
     </tr>`;
   }).join('');
 
@@ -676,7 +734,7 @@ function renderTrain(data, liveData) {
   document.getElementById('train-content').innerHTML = `
     <table class="stop-table">
       <thead><tr>
-        <th>#</th><th>車站</th><th>到站</th><th>離站</th>
+        <th class="col-seq">#</th><th>車站</th><th class="col-arr">到站</th><th>離站</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>${hintHtml}`;
@@ -766,6 +824,24 @@ async function loadAll() {
 }
 
 loadAll();
+
+// ── Collapsible sections (mobile: collapsed by default; desktop: always open) ──
+const IS_MOBILE = document.documentElement.classList.contains('is-mobile');
+
+function toggleSection(id) {
+  if (!IS_MOBILE) return;   // desktop: click does nothing (always open)
+  const body  = document.getElementById(id + '-body');
+  const title = document.getElementById(id + '-title');
+  const isOpen = body.classList.toggle('open');
+  title.classList.toggle('open', isOpen);
+}
+
+// On desktop: immediately open both collapsible bodies
+if (!IS_MOBILE) {
+  ['alert', 'news'].forEach(id => {
+    document.getElementById(id + '-body').classList.add('open');
+  });
+}
 </script>
 </body>
 </html>
