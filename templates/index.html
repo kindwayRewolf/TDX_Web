@@ -734,7 +734,7 @@ function getFreqCodes(n = 6) {
 let CITY_STATIONS = {{ station_groups | tojson }};
 
 function getCityForCode(code) {
-  return CITY_STATIONS.find(g => g.codes.includes(code))?.city || CITY_STATIONS[0].city;
+  return CITY_STATIONS.find(g => g.codes.includes(code))?.city || CITY_STATIONS[0]?.city || '';
 }
 
 function buildCitySelect(sel, selectedCity) {
@@ -904,31 +904,9 @@ function showError(msg) {
 
 // ── Train category ────────────────────────────────────────────────────────
 function getCategory(t) {
-  if (t.train_name.startsWith('區間快')) return 'express';
-  if (t.train_name.startsWith('區間'))   return 'local';
+  if (t.train_type.startsWith('區間快')) return 'express';
+  if (t.train_type.startsWith('區間'))   return 'local';
   return 'reserved';
-}
-
-// ── Sort trains — show closest undeparted train first ──────────────────────
-function sortTrainsByClosestUndeparted(trains) {
-  const now = new Date();
-  const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-
-  return trains.sort((a, b) => {
-    const aUndeparted = a.dep >= currentTime;
-    const bUndeparted = b.dep >= currentTime;
-
-    // Both undeparted: sort by ascending (earliest/closest first)
-    if (aUndeparted && bUndeparted) {
-      return a.dep.localeCompare(b.dep);
-    }
-    // Only a is undeparted: a comes first
-    if (aUndeparted) return -1;
-    // Only b is undeparted: b comes first
-    if (bUndeparted) return 1;
-    // Both departed: sort by descending (most recent first)
-    return b.dep.localeCompare(a.dep);
-  });
 }
 
 // ── Remark pill renderer ──────────────────────────────────────────────────
@@ -1173,7 +1151,7 @@ async function queryDaily() {
 
   const s = CacheManager.stats();
   setStatus(`📅 ${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
-  document.getElementById('source-footer').textContent =
+  document.getElementById('source-footer').innerHTML =
     `資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　${dateStr} 實際行駛班次`;
   // fetchLive() is user-triggered only (即時 button) — not called automatically
   // to avoid adding 2 extra TDX LiveBoard calls on every page load.
@@ -1213,7 +1191,16 @@ async function fetchLive() {
     const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
     if (!r1.ok) throw new Error(d1.error || r1.statusText);
     if (!r2.ok) throw new Error(d2.error || r2.statusText);
-    liveDelayMap = { ...d1.delays, ...d2.delays };
+    // Merge delays: prefer non-zero values (a train delayed at origin
+    // should not be overwritten by an on-time read at destination).
+    liveDelayMap = {};
+    for (const [no, delay] of Object.entries(d1.delays || {})) {
+      liveDelayMap[no] = delay;
+    }
+    for (const [no, delay] of Object.entries(d2.delays || {})) {
+      if (!(no in liveDelayMap) || liveDelayMap[no] === 0)
+        liveDelayMap[no] = delay;
+    }
     btn.classList.remove('live-loading');
     btn.classList.add('live-on');
     const fetched = Math.max(d1.fetched_at, d2.fetched_at);
@@ -1224,6 +1211,8 @@ async function fetchLive() {
     overlayDelays(document.getElementById('scroll-ba'));
   } catch (e) {
     btn.classList.remove('live-loading');
+    btn.classList.remove('live-on');
+    btn.textContent = '🟡 即時狀態';
     showError(`即時狀態無法取得：${e.message}`);
   } finally {
     btn.disabled = false;
@@ -1254,6 +1243,7 @@ setInterval(updateTimer, 1000);
 queryDaily();
 </script>
 <script>
+// Warm-up ping on page load to wake Render free-tier from cold start.
 fetch("/health").catch(() => {});
 </script>
 </body>

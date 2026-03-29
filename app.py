@@ -4,6 +4,7 @@
 Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 """
 
+import collections
 import json
 import os
 import re
@@ -105,6 +106,57 @@ TOKEN_URL = (
     "/protocol/openid-connect/token"
 )
 
+
+class _KeyRateLimiter:
+    """Sliding-window rate limiter: max 5 requests per 60 seconds per API key.
+
+    Thread-safe.  `acquire()` blocks until a slot is free, then claims it
+    atomically — so a request is never issued before a slot is guaranteed.
+    Works correctly with any number of concurrent threads.
+    """
+    WINDOW  = 60.0   # seconds
+    MAX_REQ = 5      # TDX free-plan limit per key
+
+    def __init__(self) -> None:
+        self._ts: collections.deque = collections.deque()   # epoch timestamps of issued requests
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        """Remove timestamps that have fallen outside the current window."""
+        cutoff = now - self.WINDOW
+        while self._ts and self._ts[0] <= cutoff:
+            self._ts.popleft()
+
+    def next_available_at(self) -> float:
+        """Return epoch-seconds when the next slot opens (≤ now means ready)."""
+        with self._lock:
+            now = time.time()
+            self._prune(now)
+            return now if len(self._ts) < self.MAX_REQ else self._ts[0] + self.WINDOW
+
+    def acquire(self) -> None:
+        """Block until a slot is available, then claim it atomically."""
+        while True:
+            with self._lock:
+                now = time.time()
+                self._prune(now)
+                if len(self._ts) < self.MAX_REQ:
+                    self._ts.append(now)
+                    return
+                wait = self._ts[0] + self.WINDOW - now
+            # Sleep outside the lock so other threads can acquire concurrently.
+            time.sleep(min(wait, 1.0))
+
+    def mark_exhausted(self) -> None:
+        """Force-fill the window so this key is unavailable for ~60 s.
+        Called as a safety net after an unexpected 429 response."""
+        with self._lock:
+            now = time.time()
+            self._ts.clear()
+            for _ in range(self.MAX_REQ):
+                self._ts.append(now)
+
+
 def _load_key_pool() -> list[dict]:
     """Build a list of {id, secret, token_cache} from environment variables."""
     pool = []
@@ -112,7 +164,7 @@ def _load_key_pool() -> list[dict]:
     _id0 = os.environ.get("TDX_CLIENT_ID", "")
     _sc0 = os.environ.get("TDX_CLIENT_SECRET", "")
     if _id0 and _sc0:
-        pool.append({"id": _id0, "secret": _sc0, "token_cache": {}})
+        pool.append({"id": _id0, "secret": _sc0, "token_cache": {}, "limiter": _KeyRateLimiter()})
     # Keys #1, #2, ... — numbered suffixes
     i = 1
     while True:
@@ -120,7 +172,7 @@ def _load_key_pool() -> list[dict]:
         _sc = os.environ.get(f"TDX_CLIENT_SECRET_{i}", "")
         if not _id or not _sc:
             break
-        pool.append({"id": _id, "secret": _sc, "token_cache": {}})
+        pool.append({"id": _id, "secret": _sc, "token_cache": {}, "limiter": _KeyRateLimiter()})
         i += 1
     if not pool:
         raise RuntimeError("No TDX API credentials found in environment")
@@ -159,7 +211,7 @@ def _get_token_for(key: dict) -> str:
 _timetable_cache: dict = {}      # {"trains": [...], "fetched_at": float, "expire_iso": str}
 _daily_cache: dict = {}          # {date_str: {"trains": [...], "fetched_at": float}}
 _od_cache: dict = {}             # {"{fc}_{tc}": {"ab": [...], "ba": [...], "fetched_at": float}}
-_liveboard_cache: dict = {}      # {"trains": {train_no: delay_min}, "fetched_at": float}
+_liveboard_cache: dict = {}      # {station_id: {"delays": {train_no: delay_min}, "fetched_at": float}}
 _alert_cache:     dict = {}      # {"items": [...], "fetched_at": float}
 _news_cache:      dict = {}      # {"items": [...], "fetched_at": float}
 _trainlive_cache:   dict = {}      # {train_no: {"live": {...}, "fetched_at": float}}
@@ -167,6 +219,7 @@ _stationlive_cache: dict = {}      # {station_id: {"boards": [...], "fetched_at"
 _cache_lock = threading.Lock()
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
+GENERAL_CACHE_TTL     = 12 * 3600        # 12 hours    (general timetable rarely changes)
 DAILY_CACHE_TTL       = 7 * 24 * 3600   # 7 days      (matches client TTL)
 LIVEBOARD_CACHE_TTL   = 60               # 60 seconds  (live data, short TTL)
 ALERT_CACHE_TTL       = 5  * 60         # 5 minutes
@@ -209,6 +262,7 @@ _CITY_ORDER = [
 # Virtual/special stations to hide from the UI picker.
 _HIDDEN_STATION_IDS: set[str] = {
     "1001",   # 臺北-環島 — virtual station for round-island trains only
+    "5170",   # 枋野      — signal station (號誌站), not open to passengers
     "5998",   # 南方小站  — maintenance/facility stop, not a regular passenger station
     "5999",   # 潮州基地  — rolling-stock depot stop, not a regular passenger station
 }
@@ -216,23 +270,33 @@ _HIDDEN_STATION_IDS: set[str] = {
 # ─── Seed data loader ───────────────────────────────────────────────────────
 _SEED_FILE            = Path(__file__).parent / "seed_data.json"
 _TIMETABLE_CACHE_FILE = Path(__file__).parent / "timetable_cache.json"
+_seed_generated_at: str = ""   # set by _load_seed_data(); used by startup thread
 
 def _load_seed_data() -> None:
     """Load bootstrap station data from seed_data.json into module globals.
     Called once at startup; on miss the globals stay empty until API loads."""
+    global _seed_generated_at
     try:
         seed = json.loads(_SEED_FILE.read_text(encoding="utf-8"))
+        _seed_generated_at = seed.get("generated_at", "")
         if seed.get("stations"):
             STATIONS.clear()
-            STATIONS.update(seed["stations"])
+            STATIONS.update(
+                {n: c for n, c in seed["stations"].items()
+                 if c not in _HIDDEN_STATION_IDS}
+            )
         if seed.get("station_classes"):
             _STATION_CLASSES.clear()
             _STATION_CLASSES.update(
-                {k: int(v) for k, v in seed["station_classes"].items()}
+                {k: int(v) for k, v in seed["station_classes"].items()
+                 if k not in _HIDDEN_STATION_IDS}
             )
         if seed.get("station_groups"):
             _STATION_GROUPS.clear()
-            _STATION_GROUPS.extend(seed["station_groups"])
+            for g in seed["station_groups"]:
+                codes = [c for c in g.get("codes", []) if c not in _HIDDEN_STATION_IDS]
+                if codes:
+                    _STATION_GROUPS.append({"city": g["city"], "codes": codes})
         print(
             f"[seed] Loaded {len(STATIONS)} stations, "
             f"{len(_STATION_GROUPS)} groups from {_SEED_FILE.name}"
@@ -244,10 +308,16 @@ def _load_seed_data() -> None:
 
 
 # ─── Timetable disk cache ──────────────────────────────────────────────────
+_save_lock = threading.Lock()   # ensures only one disk-write runs at a time
+
 def _save_timetable_disk_cache() -> None:
     """Serialize general + daily timetable caches to disk.
     Called in a background thread after every successful TDX fetch so the
-    next server restart can skip those TDX calls entirely."""
+    next server restart can skip those TDX calls entirely.
+    Uses a lock so concurrent calls coalesce (last write wins, no races).
+    Writes to a temp file first then renames for atomicity."""
+    if not _save_lock.acquire(blocking=False):
+        return   # another save is already in progress — skip this one
     try:
         with _cache_lock:
             general = {
@@ -269,7 +339,11 @@ def _save_timetable_disk_cache() -> None:
             ensure_ascii=False,
             separators=(",", ":"),
         )
-        _TIMETABLE_CACHE_FILE.write_text(payload, encoding="utf-8")
+        # Atomic write: write to .tmp then rename so a mid-write restart
+        # never leaves a truncated/corrupt cache file.
+        tmp = _TIMETABLE_CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(_TIMETABLE_CACHE_FILE)
         size_kb = len(payload.encode()) // 1024
         print(
             f"[cache] Wrote {_TIMETABLE_CACHE_FILE.name} "
@@ -277,6 +351,8 @@ def _save_timetable_disk_cache() -> None:
         )
     except Exception as exc:
         print(f"[cache] Disk write failed ({exc})")
+    finally:
+        _save_lock.release()
 
 
 def _load_disk_caches() -> None:
@@ -318,7 +394,7 @@ def _load_disk_caches() -> None:
     # Only applied if _STATION_CLASSES is still empty (seed didn't have them).
     cached_classes = {
         k: int(v) for k, v in data.get("station_classes", {}).items()
-        if isinstance(v, (int, float))
+        if isinstance(v, (int, float)) and k not in _HIDDEN_STATION_IDS
     }
     if cached_classes and not _STATION_CLASSES:
         _STATION_CLASSES.update(cached_classes)
@@ -424,17 +500,17 @@ def _load_stations_from_api() -> bool:
         if not new:
             return False
 
-        STATIONS.clear()
-        STATIONS.update(new)
-        _VALID_CODES.clear()
-        _VALID_CODES.update(new.values())
-        # Only overwrite station classes when TDX actually returned StationClass
-        # Merge new API classes into the existing dict.
-        # TDX only returns StationClass for 特等/一等 (cls 0/1); 二等~簡易
-        # have null and are never in new_classes.  So we UPDATE rather than
-        # REPLACE — seed/hardcoded 二等/三等 entries survive each API refresh.
-        if new_classes:
-            _STATION_CLASSES.update(new_classes)
+        with _cache_lock:
+            STATIONS.clear()
+            STATIONS.update(new)
+            _VALID_CODES.clear()
+            _VALID_CODES.update(new.values())
+            # Merge new API classes into the existing dict.
+            # v2 returns StationClass for all tiers (0-5), so new_classes covers
+            # the full station set.  UPDATE (rather than REPLACE) is used so that
+            # any code present in seed but absent from the API response is preserved.
+            if new_classes:
+                _STATION_CLASSES.update(new_classes)
 
         # Build ordered city groups
         groups: list[dict] = []
@@ -459,13 +535,14 @@ def _load_stations_from_api() -> bool:
         print(f"[stations] Loaded {len(new)} stations, {len(groups)} groups from TDX API")
 
         # Persist updated data to seed file so next startup is always fresh.
-        # Priority for station_classes: fresh API data > in-memory > file on disk.
+        # Always save the full merged _STATION_CLASSES (243 entries) — not just
+        # new_classes from the API (~32 entries for cls 0/1 only), which would
+        # overwrite the seed and lose 二等~簡易 class data on the next cold start.
         try:
-            classes_to_save = new_classes if new_classes else dict(_STATION_CLASSES)
             seed_out = {
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "stations":        new,
-                "station_classes": classes_to_save,
+                "station_classes": dict(_STATION_CLASSES),
                 "station_groups":  _STATION_GROUPS,
             }
             _SEED_FILE.write_text(
@@ -491,34 +568,55 @@ def get_token() -> str:
 
 
 def api_get(url: str) -> dict:
-    """Fetch a TDX API URL, rotating keys on 429 and retrying 401."""
+    """Fetch a TDX API URL with per-key rate limiting (max 5 req / 60 s per key).
+
+    Key selection strategy:
+      - Always pick the key whose next available slot opens soonest.
+      - Break ties by round-robin (_pool_index) so load spreads evenly.
+      - `acquire()` then blocks the calling thread until that slot is confirmed
+        (atomic claim).  This prevents 429s proactively instead of reacting to them.
+      - 429 is still handled as a safety net: `mark_exhausted()` forces a ~60 s
+        cooldown on the offending key so the next retry uses a different one.
+    """
     global _pool_index
     _MAX_RETRIES = len(_key_pool) + 1
 
     for attempt in range(_MAX_RETRIES):
+        # Pick the key with the earliest available slot.
+        # Tiebreak by distance from _pool_index (round-robin when all keys are free).
         with _pool_lock:
-            idx = _pool_index % len(_key_pool)
-            key = _key_pool[idx]
+            start = _pool_index % len(_key_pool)
+        best_idx = min(
+            range(len(_key_pool)),
+            key=lambda i: (
+                _key_pool[i]["limiter"].next_available_at(),
+                (i - start) % len(_key_pool),   # round-robin tiebreaker
+            ),
+        )
+        key = _key_pool[best_idx]
+
+        # Block here until the chosen key has a free rate-limit slot.
+        key["limiter"].acquire()
 
         try:
             token = _get_token_for(key)
         except requests.HTTPError:
-            # Token fetch failed for this key — advance and try next
+            # Token endpoint failed — skip to next key in round-robin order.
             with _pool_lock:
-                _pool_index += 1
+                _pool_index = (best_idx + 1) % len(_key_pool)
             continue
 
         headers = {"authorization": f"Bearer {token}", "Accept-Encoding": "gzip"}
         resp = requests.get(url, headers=headers, timeout=60)
 
         if resp.status_code == 429:
-            # Rate-limited — rotate to next key immediately
-            with _pool_lock:
-                _pool_index += 1
+            # Safety net: limiter should prevent this, but if TDX rejects anyway,
+            # force a 60 s cooldown so the next retry picks a different key.
+            key["limiter"].mark_exhausted()
             continue
 
         if resp.status_code == 401:
-            # Token expired mid-flight — clear cache and retry same key once
+            # Token expired mid-flight — refresh and retry once on the same key.
             with _cache_lock:
                 key["token_cache"].clear()
             token = _get_token_for(key)
@@ -527,10 +625,9 @@ def api_get(url: str) -> dict:
 
         resp.raise_for_status()
 
-        # Success — advance index for next call (round-robin)
+        # Advance index so the next call starts from the key after this one.
         with _pool_lock:
-            _pool_index += 1
-
+            _pool_index = (best_idx + 1) % len(_key_pool)
         return resp.json()
 
     raise RuntimeError(f"All {len(_key_pool)} API key(s) exhausted for URL: {url}")
@@ -552,7 +649,7 @@ def get_all_trains() -> list:
             except ValueError:
                 pass
         # Fall back to local TTL
-        elif time.time() - fetched_at < OD_CACHE_TTL:
+        elif time.time() - fetched_at < GENERAL_CACHE_TTL:
             return cached
 
     url = (
@@ -709,7 +806,6 @@ def filter_od(all_trains: list, from_code: str, to_code: str) -> list:
         result.append({
             "train_no":   train_no,
             "train_type": _format_train_type(train_type),
-            "train_name": f"{train_type} {train_no}",
             "dep":        orig_dep,
             "arr":        dest_arr,
             "duration":   duration,
@@ -779,15 +875,14 @@ def _startup_station_load():
     # Skip API refresh if seed_data.json was written in the last 24 hours.
     # Station data (names, codes, classes) changes extremely rarely, so an
     # up-to-date seed avoids unnecessary TDX API calls on every restart.
-    try:
-        gen_at_str = json.loads(_SEED_FILE.read_text(encoding="utf-8")).get("generated_at", "")
-        if gen_at_str:
-            age_s = (datetime.now() - datetime.fromisoformat(gen_at_str)).total_seconds()
+    if _seed_generated_at:
+        try:
+            age_s = (datetime.now() - datetime.fromisoformat(_seed_generated_at)).total_seconds()
             if age_s < 86400:   # 24 hours
                 print(f"[stations] Seed is {age_s/3600:.1f}h old — skipping API refresh")
                 return
-    except Exception:
-        pass
+        except Exception:
+            pass
     _run_station_load_once()
 
 
@@ -827,6 +922,8 @@ def api_trains():
         return jsonify({"ab": ab, "ba": ba, "cached": False})
     except requests.HTTPError as e:
         return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
 
@@ -840,6 +937,8 @@ def api_trains_daily():
 
     if not from_code or not to_code or not date_str:
         return jsonify({"error": "Missing 'from', 'to', or 'date' parameter"}), 400
+    if from_code == to_code:
+        return jsonify({"error": "Origin and destination must differ"}), 400
     if from_code not in _VALID_CODES or to_code not in _VALID_CODES:
         return jsonify({"error": "Invalid station code"}), 400
     try:
@@ -854,6 +953,8 @@ def api_trains_daily():
         return jsonify({"ab": ab, "ba": ba, "date": date_str})
     except requests.HTTPError as e:
         return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
 
@@ -891,6 +992,8 @@ def api_liveboard():
         return jsonify({"delays": delays, "cached": False, "fetched_at": now})
     except requests.HTTPError as e:
         return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
 
@@ -961,7 +1064,7 @@ def api_train_detail(train_no: str):
 
 @app.route("/api/trainlive/<train_no>")
 def api_trainlive(train_no: str):
-    """Return real-time train position from TrainLiveBoard API. Cached 30 s."""
+    """Return real-time train position from TrainLiveBoard API. Cached 60 s."""
     if not re.match(r"^\d{1,5}$", train_no):
         return jsonify({"error": "Invalid train number"}), 400
     with _cache_lock:
@@ -996,15 +1099,19 @@ def api_trainlive(train_no: str):
             _trainlive_cache[train_no] = {"live": live, "fetched_at": time.time()}
         return jsonify({"live": live, "cached": False})
     except requests.HTTPError as e:
-        return jsonify({"live": None, "error": str(e)})
+        return jsonify({"live": None, "error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"live": None, "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
-        return jsonify({"live": None, "error": "Internal server error"})
+        return jsonify({"live": None, "error": "Internal server error"}), 500
 
 
 @app.route("/api/stationlive/<station_id>")
 def api_stationlive(station_id: str):
-    """Return train live board for a station (StationLiveBoard v3). Cached 30 s."""
+    """Return train live board for a station (StationLiveBoard v3). Cached 60 s."""
     if not re.match(r"^\d{4}$", station_id):
+        return jsonify({"error": "Invalid station ID"}), 400
+    if station_id not in _VALID_CODES:
         return jsonify({"error": "Invalid station ID"}), 400
     with _cache_lock:
         entry      = _stationlive_cache.get(station_id)
@@ -1039,9 +1146,11 @@ def api_stationlive(station_id: str):
             _stationlive_cache[station_id] = {"boards": boards, "fetched_at": time.time()}
         return jsonify({"boards": boards, "cached": False})
     except requests.HTTPError as e:
-        return jsonify({"boards": [], "error": str(e)})
+        return jsonify({"boards": [], "error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"boards": [], "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
-        return jsonify({"boards": [], "error": "Internal server error"})
+        return jsonify({"boards": [], "error": "Internal server error"}), 500
 
 
 @app.route("/api/alert")
@@ -1060,8 +1169,12 @@ def api_alert():
             _alert_cache["items"]      = alerts
             _alert_cache["fetched_at"] = time.time()
         return jsonify({"alerts": alerts, "cached": False})
-    except Exception as e:
-        return jsonify({"alerts": [], "error": str(e)})
+    except requests.HTTPError as e:
+        return jsonify({"alerts": [], "error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"alerts": [], "error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        return jsonify({"alerts": [], "error": "Internal server error"}), 500
 
 
 @app.route("/api/news")
@@ -1080,8 +1193,12 @@ def api_news():
             _news_cache["items"]      = news
             _news_cache["fetched_at"] = time.time()
         return jsonify({"news": news, "cached": False})
-    except Exception as e:
-        return jsonify({"news": [], "error": str(e)})
+    except requests.HTTPError as e:
+        return jsonify({"news": [], "error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"news": [], "error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        return jsonify({"news": [], "error": "Internal server error"}), 500
 
 
 @app.route("/health")

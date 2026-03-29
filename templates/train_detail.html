@@ -572,8 +572,8 @@ function renderAlerts(alerts) {
   el.innerHTML = '<div class="alert-list">' +
     alerts.map(a => {
       const [cls, label] = statusLabel(a.Status ?? 1);
-      const title = a.Title || '（無標題）';
-      const desc  = a.Description || '';
+      const title = escHtml(a.Title || '（無標題）');
+      const desc  = escHtml(a.Description || '');
       const start = a.StartTime ? fmtTime(a.StartTime) : '';
       const end   = a.EndTime   ? fmtTime(a.EndTime)   : '';
       const time  = start ? `${start}${end ? ' ～ ' + end : ''}` : '';
@@ -601,8 +601,8 @@ function renderNews(news) {
   }
   el.innerHTML = '<div class="news-list">' +
     items.slice(0, 10).map(n => {
-      const title = n.Title || '（無標題）';
-      const desc  = n.Description || '';
+      const title = escHtml(n.Title || '（無標題）');
+      const desc  = escHtml(n.Description || '');
       const pub   = n.PublishTime ? fmtTime(n.PublishTime) : '';
       return `<div class="news-card">
         <div class="news-title">${title}</div>
@@ -611,6 +611,15 @@ function renderNews(news) {
       </div>`;
     }).join('') +
   '</div>';
+}
+
+// ── HTML escape helper (prevents XSS from URL params used in innerHTML) ──────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ── Render station live board card ──────────────────────────────────────
@@ -635,7 +644,7 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
     wrap.innerHTML =
       `<div class="station-card">
         <div class="station-card-header">
-          <span class="stn-label ${labelClass}">${labelText}</span>${stationName}
+          <span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}
         </div>
         <div style="padding:10px 12px;font-size:12px;color:var(--fg-dim)">\u76ee\u524d\u7121\u8eca\u6b21\u8cc7\u8a0a</div>
       </div>`;
@@ -662,7 +671,7 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
   wrap.innerHTML =
     `<div class="station-card">
       <div class="station-card-header">
-        <span class="stn-label ${labelClass}">${labelText}</span>${stationName}
+        <span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}
       </div>
       <table class="stn-table"><tbody>${rows}</tbody></table>
     </div>`;
@@ -766,8 +775,6 @@ function renderTrain(data, liveData) {
     </tr>`;
   }).join('');
 
-  const hintHtml = '';
-
   document.getElementById('train-content').innerHTML = `
     <div class="stop-table-wrap">
       <table class="stop-table">
@@ -776,7 +783,7 @@ function renderTrain(data, liveData) {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>${hintHtml}`;
+    </div>`;
 
   // Scroll the wrap to show current/from row near top
   const scrollTarget =
