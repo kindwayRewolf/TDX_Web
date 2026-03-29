@@ -361,6 +361,7 @@
   tbody tr {
     border-bottom: 1px solid rgba(22,53,86,.5);
     transition: background var(--transition);
+    cursor: pointer;
   }
   tbody tr:hover { background: rgba(77,168,232,.08) !important; }
 
@@ -770,7 +771,7 @@ function remarkTags(remark) {
 }
 
 // ── Render one table ──────────────────────────────────────────────────────
-function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB) {
+function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB, fromCode, toCode) {
   const showReserved = filterOn('chip-reserved');
   const showLocal    = filterOn('chip-local');
   const showExpress  = filterOn('chip-express');
@@ -826,6 +827,14 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
       <tbody>${rows}</tbody>
     </table>`;
 
+  // Row click → open train detail in new tab
+  scrollEl.querySelector('tbody')?.addEventListener('click', e => {
+    const row = e.target.closest('tr[data-train-no]');
+    if (!row) return;
+    const params = fromCode && toCode ? `?from=${fromCode}&to=${toCode}` : '';
+    window.open(`/train/${row.dataset.trainNo}${params}`, '_blank');
+  });
+
   // Scroll so next upcoming train is the 3rd visible row (show 2 past rows above)
   let nextRow = null;
   for (const row of scrollEl.querySelectorAll('tbody tr[data-dep]')) {
@@ -836,11 +845,13 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB)
     const rowTop = nextRow.offsetTop; // relative to table top
     scrollEl.scrollTop = Math.max(0, rowTop - ROW_H * 0);
 
-    // Schedule auto-refresh at next departure time + 1 s (only from the AB panel)
+    // Schedule auto-refresh at the START of the minute AFTER departure.
+    // e.g. train departs 18:38 → timer fires at 18:39:00.
+    // At that point nowHM="18:39" so "18:38" < "18:39" → correctly dimmed as past.
     if (isAB) {
       if (_nextTrainTimer) clearTimeout(_nextTrainTimer);
       const depParts = nextRow.dataset.dep.split(':');
-      const depMs = new Date().setHours(Number(depParts[0]), Number(depParts[1]), 1, 0);
+      const depMs = new Date().setHours(Number(depParts[0]), Number(depParts[1]) + 1, 0, 0);
       const msUntil = depMs - Date.now();
       if (msUntil > 0) {
         _nextTrainTimer = setTimeout(() => {
@@ -870,14 +881,14 @@ function renderTables() {
     sortedAB,
     document.getElementById('title-ab'),
     document.getElementById('count-ab'),
-    fromName, toName, true
+    fromName, toName, true, fromCode, toCode
   );
   renderTable(
     document.getElementById('scroll-ba'),
     sortedBA,
     document.getElementById('title-ba'),
     document.getElementById('count-ba'),
-    toName, fromName, false
+    toName, fromName, false, toCode, fromCode
   );
 }
 
