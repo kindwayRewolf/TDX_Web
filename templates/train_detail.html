@@ -224,6 +224,15 @@
   .meta-chip strong { color: var(--blue); }
 
   /* ── Stop table ── */
+  .stop-table-wrap {
+    /* ~10 rows: each row ~37px + thead ~37px */
+    max-height: calc(37px * 11);
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    position: relative;
+  }
+
   .stop-table {
     width: 100%;
     border-collapse: collapse;
@@ -242,7 +251,7 @@
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
     position: sticky;
-    top: 56px;
+    top: 0;          /* sticky inside scroll box, not page */
     z-index: 2;
   }
 
@@ -399,7 +408,7 @@
     .header-train-no { font-size: 18px; }
     .section { padding: 12px 12px; }
     .stop-table tbody td { padding: 7px 8px; }
-    .stop-table thead th { padding: 7px 8px; font-size: 11px; top: 52px; }
+    .stop-table thead th { padding: 7px 8px; font-size: 11px; }
     .station-duo { grid-template-columns: 1fr; }
   }
 
@@ -732,19 +741,28 @@ function renderTrain(data, liveData) {
   const hintHtml = '';
 
   document.getElementById('train-content').innerHTML = `
-    <table class="stop-table">
-      <thead><tr>
-        <th class="col-seq">#</th><th>車站</th><th class="col-arr">到站</th><th>離站</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>${hintHtml}`;
+    <div class="stop-table-wrap">
+      <table class="stop-table">
+        <thead><tr>
+          <th class="col-seq">#</th><th>車站</th><th class="col-arr">到站</th><th>離站</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>${hintHtml}`;
 
-  // Scroll: current station to top, fall back to FROM station
+  // Scroll the wrap to show current/from row near top
   const scrollTarget =
     document.querySelector('.stop-table tr[data-current="true"]') ||
     document.querySelector('.stop-table tr.highlight-from');
   if (scrollTarget) {
-    setTimeout(() => scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    setTimeout(() => {
+      const wrap = document.querySelector('.stop-table-wrap');
+      if (wrap) {
+        // Offset relative to the scroll container
+        const rowTop = scrollTarget.offsetTop - (scrollTarget.offsetParent?.offsetTop || 0);
+        wrap.scrollTop = Math.max(0, rowTop - 37); // one row above
+      }
+    }, 200);
   }
 }
 
