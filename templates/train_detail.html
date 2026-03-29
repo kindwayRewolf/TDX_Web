@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台鐵 — 列車 {{ train_no }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #05111f;
+    --surface:  #0a1e33;
+    --panel:    #0d2540;
+    --border:   #163556;
+    --blue:     #4da8e8;
+    --blue-dim: #2a6a9e;
+    --gold:     #f5c842;
+    --green:    #56d98a;
+    --red:      #f87171;
+    --orange:   #fb923c;
+    --fg:       #c8dff0;
+    --fg-dim:   #6a8faa;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-main: 'Noto Sans TC', sans-serif;
+    --radius: 8px;
+    --transition: 0.18s ease;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-main);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #071a2e 0%, #0d2540 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 20px rgba(0,0,0,.5);
+  }
+
+  .back-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--blue);
+    border-radius: var(--radius);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-main);
+    white-space: nowrap;
+    transition: background var(--transition);
+  }
+  .back-btn:hover { background: var(--blue-dim); color: #fff; }
+
+  .header-train-no {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--gold);
+  }
+
+  .train-type-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }
+  .badge-reserved { background: rgba(245,200,66,.15); color: var(--gold); }
+  .badge-express  { background: rgba(86,217,138,.15); color: var(--green); }
+  .badge-local    { background: rgba(77,168,232,.15); color: var(--blue); }
+
+  .header-route {
+    font-size: 14px;
+    color: var(--fg-dim);
+    flex: 1;
+  }
+
+  /* ── Alert/News section ── */
+  .section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--fg-dim);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .alert-list, .news-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .alert-card {
+    background: var(--panel);
+    border: 1px solid rgba(248,113,113,.25);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+  }
+
+  .alert-card.status-normal {
+    border-color: rgba(86,217,138,.2);
+  }
+
+  .alert-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .alert-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    white-space: nowrap;
+  }
+  .status-0 { background: rgba(248,113,113,.25); color: var(--red); }    /* 全部停止 */
+  .status-1 { background: rgba(86,217,138,.18);  color: var(--green); }  /* 正常 */
+  .status-2 { background: rgba(251,146,60,.22);  color: var(--orange); } /* 異常 */
+
+  .alert-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .alert-desc {
+    font-size: 13px;
+    color: var(--fg-dim);
+    margin-top: 4px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .alert-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 6px;
+  }
+
+  .news-card {
+    background: var(--panel);
+    border: 1px solid rgba(77,168,232,.18);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+  }
+
+  .news-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 4px;
+  }
+
+  .news-desc {
+    font-size: 13px;
+    color: var(--fg-dim);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .news-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-dim);
+    margin-top: 6px;
+  }
+
+  .empty-notice {
+    color: var(--fg-dim);
+    font-size: 13px;
+    padding: 8px 0;
+    opacity: .6;
+  }
+
+  /* ── Train info section ── */
+  .train-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .meta-chip {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 13px;
+    color: var(--fg);
+  }
+  .meta-chip strong { color: var(--blue); }
+
+  /* ── Stop table ── */
+  .stop-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .stop-table thead th {
+    background: #061523;
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    position: sticky;
+    top: 56px;
+    z-index: 2;
+  }
+
+  .stop-table tbody tr {
+    border-bottom: 1px solid rgba(22,53,86,.5);
+    transition: background var(--transition);
+  }
+  .stop-table tbody tr:hover { background: rgba(77,168,232,.06); }
+
+  .stop-table tbody td {
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+
+  .stop-table tr.highlight-from { background: rgba(77,168,232,.14); }
+  .stop-table tr.highlight-to   { background: rgba(251,146,60,.12); }
+  .stop-table tr.highlight-live { background: rgba(86,217,138,.13); }
+  .stop-table tr.highlight-from td:first-child { border-left: 3px solid var(--blue); }
+  .stop-table tr.highlight-to   td:first-child { border-left: 3px solid var(--orange); }
+  .stop-table tr.highlight-live td:first-child { border-left: 3px solid var(--green); }
+  .stop-table tr.row-past { opacity: 0.32; }
+  .stop-table tr.row-past:hover { opacity: 0.55; }
+
+  .stop-seq {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-dim);
+    width: 36px;
+    text-align: center;
+  }
+
+  .stop-name {
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .stop-name.hl-from { color: var(--blue);   font-weight: 700; }
+  .stop-name.hl-to   { color: var(--orange); font-weight: 700; }
+  .stop-name.hl-live { color: var(--green);  font-weight: 700; }
+
+  .stop-time {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-dim);
+  }
+  .stop-time.main { color: #fff; font-weight: 600; }
+
+  .hl-label {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-weight: 600;
+  }
+  .hl-label-from { background: rgba(77,168,232,.22); color: var(--blue); }
+  .hl-label-to   { background: rgba(251,146,60,.22);  color: var(--orange); }
+  .hl-label-live { background: rgba(86,217,138,.22);  color: var(--green); }
+
+  /* ── Loading / error ── */
+  .loading-box {
+    padding: 20px;
+    text-align: center;
+    color: var(--fg-dim);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    background: rgba(220,50,50,.12);
+    border: 1px solid rgba(220,50,50,.3);
+    color: var(--red);
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    display: none;
+  }
+
+  footer {
+    padding: 8px 20px;
+    font-size: 11px;
+    color: var(--fg-dim);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  /* ── Station live board cards ── */
+  .station-duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .station-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .station-card-header {
+    background: #061523;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stn-label {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .stn-label-from { background: rgba(77,168,232,.2);  color: var(--blue); }
+  .stn-label-to   { background: rgba(251,146,60,.2);  color: var(--orange); }
+
+  .stn-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .stn-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid rgba(22,53,86,.4);
+    white-space: nowrap;
+  }
+  .stn-row-hl { background: rgba(77,168,232,.1); }
+  .stn-row-hl td:first-child { border-left: 3px solid var(--gold); }
+  .stn-delay-pos { color: var(--red);   font-weight: 600; }
+  .stn-delay-ok  { color: var(--green); font-weight: 600; }
+
+  @media (max-width: 600px) {
+    header { padding: 10px 12px; gap: 10px; }
+    .header-train-no { font-size: 18px; }
+    .section { padding: 12px 12px; }
+    .stop-table tbody td { padding: 7px 8px; }
+    .stop-table thead th { padding: 7px 8px; font-size: 11px; top: 52px; }
+    .station-duo { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="back-btn" onclick="history.back()">← 返回</button>
+  <span class="header-train-no">🚆 {{ train_no }}</span>
+  <span id="header-type"></span>
+  <span class="header-route" id="header-route">載入中…</span>
+</header>
+
+<!-- ── Alert / News ─────────────────────────────────────────────────────── -->
+<div class="section" id="alert-section">
+  <div class="section-title">📢 通阻通知</div>
+  <div id="alert-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+</div>
+
+<div class="section" id="news-section">
+  <div class="section-title">📰 最新消息</div>
+  <div id="news-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+</div>
+
+<!-- ── Station live boards ────────────────────────────────────────────────── -->
+<div class="section" id="station-section" style="display:none">
+  <div class="section-title">🚏 起訖站即時資訊</div>
+  <div class="station-duo">
+    <div id="station-from-wrap"></div>
+    <div id="station-to-wrap"></div>
+  </div>
+</div>
+
+<!-- ── Train stop list ──────────────────────────────────────────────────── -->
+<div class="section" id="train-section">
+  <div class="section-title">� 即將停靠站 <span id="live-status-chip"></span></div>
+  <div class="train-meta" id="train-meta"></div>
+  <div id="error-box" class="error-box"></div>
+  <div id="train-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+</div>
+
+<footer id="page-footer">資料來源：TDX Open API（交通部運輸資料流通服務）</footer>
+
+<script>
+const TRAIN_NO = "{{ train_no }}";
+const params   = new URLSearchParams(location.search);
+const FROM     = params.get('from') || '';
+const TO       = params.get('to')   || '';
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '—';
+  // If already HH:MM format
+  if (/^\d{2}:\d{2}/.test(iso)) return iso.slice(0, 5);
+  try {
+    const d = new Date(iso);
+    return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ` +
+           `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  } catch { return iso; }
+}
+
+function badgeClass(typeShort) {
+  if (!typeShort) return 'badge-local';
+  if (typeShort.startsWith('區間快')) return 'badge-express';
+  if (typeShort.startsWith('區間'))   return 'badge-local';
+  return 'badge-reserved';
+}
+
+function statusLabel(status) {
+  if (status === 0) return ['status-0', '全部停駛'];
+  if (status === 1) return ['status-1', '正常營運'];
+  return ['status-2', '異常狀況'];
+}
+
+// ── Render alerts ──────────────────────────────────────────────────────────
+function renderAlerts(alerts) {
+  const el = document.getElementById('alert-content');
+  if (!alerts || alerts.length === 0) {
+    el.innerHTML = '<div class="empty-notice">目前無通阻通知</div>';
+    return;
+  }
+  el.innerHTML = '<div class="alert-list">' +
+    alerts.map(a => {
+      const [cls, label] = statusLabel(a.Status ?? 1);
+      const title = a.Title || '（無標題）';
+      const desc  = a.Description || '';
+      const start = a.StartTime ? fmtTime(a.StartTime) : '';
+      const end   = a.EndTime   ? fmtTime(a.EndTime)   : '';
+      const time  = start ? `${start}${end ? ' ～ ' + end : ''}` : '';
+      return `<div class="alert-card">
+        <div class="alert-header">
+          <span class="alert-status ${cls}">${label}</span>
+          <span class="alert-title">${title}</span>
+        </div>
+        ${desc ? `<div class="alert-desc">${desc}</div>` : ''}
+        ${time ? `<div class="alert-time">⏱ ${time}</div>` : ''}
+      </div>`;
+    }).join('') +
+  '</div>';
+}
+
+// ── Render news ────────────────────────────────────────────────────────────
+function renderNews(news) {
+  const el = document.getElementById('news-content');
+  // Filter to zh-tw only (or all if none)
+  const filtered = (news || []).filter(n => !n.Language || n.Language.toLowerCase().startsWith('zh'));
+  const items    = filtered.length ? filtered : (news || []);
+  if (!items.length) {
+    el.innerHTML = '<div class="empty-notice">目前無最新消息</div>';
+    return;
+  }
+  el.innerHTML = '<div class="news-list">' +
+    items.slice(0, 10).map(n => {
+      const title = n.Title || '（無標題）';
+      const desc  = n.Description || '';
+      const pub   = n.PublishTime ? fmtTime(n.PublishTime) : '';
+      return `<div class="news-card">
+        <div class="news-title">${title}</div>
+        ${desc ? `<div class="news-desc">${desc}</div>` : ''}
+        ${pub ? `<div class="news-time">🗓 ${pub}</div>` : ''}
+      </div>`;
+    }).join('') +
+  '</div>';
+}
+
+// ── Render station live board card ──────────────────────────────────────
+function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  // Sort by scheduled departure (or arrival) time
+  const sorted = [...(boards || [])].sort((a, b) =>
+    (a.departure || a.arrival || '').localeCompare(b.departure || b.arrival || '')
+  );
+
+  // Anchor near current time
+  const now  = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  let anchorIdx = sorted.findIndex(t => (t.departure || t.arrival || '') >= hhmm);
+  if (anchorIdx < 0) anchorIdx = Math.max(0, sorted.length - 3);
+  const start = Math.max(0, anchorIdx - 1);
+  const slice = sorted.slice(start, start + 6);
+
+  if (!slice.length) {
+    wrap.innerHTML =
+      `<div class="station-card">
+        <div class="station-card-header">
+          <span class="stn-label ${labelClass}">${labelText}</span>${stationName}
+        </div>
+        <div style="padding:10px 12px;font-size:12px;color:var(--fg-dim)">\u76ee\u524d\u7121\u8eca\u6b21\u8cc7\u8a0a</div>
+      </div>`;
+    return;
+  }
+
+  const rows = slice.map(t => {
+    const isOur   = t.train_no === TRAIN_NO;
+    const rowCls  = isOur ? ' class="stn-row-hl"' : '';
+    const noStyle = isOur ? 'color:var(--gold);font-weight:700' : '';
+    const sched   = (t.departure || t.arrival || '\u2014').slice(0, 5);
+    const delayEl = t.delay > 0
+      ? `<span class="stn-delay-pos">+${t.delay}\u5206</span>`
+      : `<span class="stn-delay-ok">\u6e96\u9ede</span>`;
+    return `<tr${rowCls}>
+      <td><span style="${noStyle};font-family:var(--font-mono)">${t.train_no}</span></td>
+      <td style="color:var(--fg-dim)">${t.train_type}</td>
+      <td style="color:var(--fg-dim)">${t.dest}</td>
+      <td style="font-family:var(--font-mono);text-align:right">${sched}</td>
+      <td style="text-align:right">${delayEl}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML =
+    `<div class="station-card">
+      <div class="station-card-header">
+        <span class="stn-label ${labelClass}">${labelText}</span>${stationName}
+      </div>
+      <table class="stn-table"><tbody>${rows}</tbody></table>
+    </div>`;
+}
+
+// ── Determine which stop index is "current" ───────────────────────────────
+function computeStartIdx(stops, liveStationId) {
+  // 1. Live data: train just departed liveStationId
+  if (liveStationId) {
+    const idx = stops.findIndex(s => s.station_id === liveStationId);
+    if (idx !== -1) return idx + 1;  // next stop after the one just departed
+    // Passing station — fall through to time-based estimate
+  }
+  // 2. Time-based: find the last stop whose departure has already passed
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  let lastPastIdx = -1;
+  for (let i = 0; i < stops.length; i++) {
+    const dep = stops[i].departure || stops[i].arrival || '';
+    if (dep && dep.slice(0, 5) <= hhmm) lastPastIdx = i;
+  }
+  if (lastPastIdx !== -1) return lastPastIdx + 1;
+  // 3. FROM station anchor (train hasn't departed yet)
+  if (FROM) {
+    const idx = stops.findIndex(s => s.station_id === FROM);
+    if (idx !== -1) return idx;
+  }
+  return 0;
+}
+
+// ── Render train stops ─────────────────────────────────────────────────────
+function renderTrain(data, liveData) {
+  // Header
+  const typeShort = data.train_type_short || '';
+  document.getElementById('header-type').innerHTML =
+    `<span class="train-type-badge ${badgeClass(typeShort)}">${typeShort}</span>`;
+  document.getElementById('header-route').textContent = data.route || '';
+
+  // Meta chips
+  const metaEl = document.getElementById('train-meta');
+  const chips = [];
+  if (data.route)     chips.push(`<span class="meta-chip"><strong>路線</strong> ${data.route}</span>`);
+  if (data.trip_line) chips.push(`<span class="meta-chip"><strong>via</strong> ${data.trip_line}</span>`);
+  if (data.bike)      chips.push(`<span class="meta-chip"><strong>🚲</strong> 可攜帶自行車</span>`);
+  if (data.note)      chips.push(`<span class="meta-chip">${data.note}</span>`);
+  metaEl.innerHTML = chips.join('');
+
+  // Live position chip
+  const liveChip = document.getElementById('live-status-chip');
+  const liveId   = liveData?.station_id || null;
+  if (liveData && liveData.station_name) {
+    const delay = liveData.delay_time > 0 ? ` +${liveData.delay_time}分` : '';
+    liveChip.innerHTML =
+      `<span style="font-size:12px;font-weight:400;color:var(--fg-dim);letter-spacing:0">
+        ⦿ 剛離開 <strong style="color:var(--blue)">${liveData.station_name}</strong>${delay}
+      </span>`;
+  } else {
+    liveChip.innerHTML =
+      `<span style="font-size:12px;font-weight:400;color:var(--fg-dim);letter-spacing:0">（即時位置不可用）</span>`;
+  }
+
+  // Stop table — ALL stops, past dimmed, current highlighted, FROM/TO marked
+  const allStops = data.stops || [];
+  if (!allStops.length) {
+    document.getElementById('train-content').innerHTML =
+      '<div class="empty-notice">查無停靠站資訊</div>';
+    return;
+  }
+
+  const startIdx   = computeStartIdx(allStops, liveId);
+  // currentIdx: the stop the train just departed (-1 = hasn't started / unknown)
+  const currentIdx = (startIdx > 0) ? startIdx - 1 : -1;
+
+  const rows = allStops.map((s, i) => {
+    const isPast  = i < startIdx && i !== currentIdx;
+    const isCurr  = i === currentIdx;
+    const isFrom  = FROM && s.station_id === FROM;
+    const isTo    = TO   && s.station_id === TO;
+
+    // Priority: FROM > TO > current > past
+    const trClass   = isFrom ? 'highlight-from'
+                    : isTo   ? 'highlight-to'
+                    : isCurr ? 'highlight-live'
+                    : isPast ? 'row-past'
+                    : '';
+    const nameClass = isFrom ? 'stop-name hl-from'
+                    : isTo   ? 'stop-name hl-to'
+                    : isCurr ? 'stop-name hl-live'
+                    : 'stop-name';
+    const label = isFrom ? '<span class="hl-label hl-label-from">出發</span>'
+                : isTo   ? '<span class="hl-label hl-label-to">抵達</span>'
+                : isCurr ? '<span class="hl-label hl-label-live">現在</span>'
+                : '';
+    const timeClass = (isFrom || isTo || isCurr) ? 'stop-time main' : 'stop-time';
+    const curr      = isCurr ? ' data-current="true"' : '';
+    return `<tr class="${trClass}"${curr}>
+      <td class="stop-seq">${s.seq}</td>
+      <td><span class="${nameClass}">${s.station_name || s.station_id}</span>${label}</td>
+      <td class="${timeClass}">${s.arrival  || '—'}</td>
+      <td class="${timeClass}">${s.departure || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const hintHtml = '';
+
+  document.getElementById('train-content').innerHTML = `
+    <table class="stop-table">
+      <thead><tr>
+        <th>#</th><th>車站</th><th>到站</th><th>離站</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>${hintHtml}`;
+
+  // Scroll: current station to top, fall back to FROM station
+  const scrollTarget =
+    document.querySelector('.stop-table tr[data-current="true"]') ||
+    document.querySelector('.stop-table tr.highlight-from');
+  if (scrollTarget) {
+    setTimeout(() => scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+  }
+}
+
+// ── Load all data in parallel ──────────────────────────────────────────────
+async function loadAll() {
+  const [trainRes, alertRes, newsRes, liveRes, fromBoardRes, toBoardRes] =
+    await Promise.allSettled([
+      fetch(`/api/train/${TRAIN_NO}`).then(r => r.json()),
+      fetch('/api/alert').then(r => r.json()),
+      fetch('/api/news').then(r => r.json()),
+      fetch(`/api/trainlive/${TRAIN_NO}`).then(r => r.json()),
+      FROM ? fetch(`/api/stationlive/${FROM}`).then(r => r.json()) : Promise.resolve(null),
+      TO   ? fetch(`/api/stationlive/${TO}`).then(r => r.json())   : Promise.resolve(null),
+    ]);
+
+  // ─ Alerts
+  if (alertRes.status === 'fulfilled' && !alertRes.value?.error) {
+    renderAlerts(alertRes.value.alerts || []);
+  } else {
+    document.getElementById('alert-content').innerHTML =
+      '<div class="empty-notice">通阻資訊暫時無法取得</div>';
+  }
+
+  // ─ News
+  if (newsRes.status === 'fulfilled' && !newsRes.value?.error) {
+    renderNews(newsRes.value.news || []);
+  } else {
+    document.getElementById('news-content').innerHTML =
+      '<div class="empty-notice">最新消息暫時無法取得</div>';
+  }
+
+  // ─ Train + live position
+  const liveData = (liveRes.status === 'fulfilled' && liveRes.value?.live)
+    ? liveRes.value.live : null;
+
+  // Derive station names from timetable stops (used for station board headers)
+  const allStopsRef = (trainRes.status === 'fulfilled' && !trainRes.value?.error)
+    ? (trainRes.value.stops || []) : [];
+  const fromStopObj = allStopsRef.find(s => s.station_id === FROM);
+  const toStopObj   = allStopsRef.find(s => s.station_id === TO);
+  const fromName    = fromStopObj?.station_name || FROM || '出發站';
+  const toName      = toStopObj?.station_name   || TO   || '到達站';
+
+  // ─ Station live boards (起訖站)
+  if (FROM || TO) {
+    document.getElementById('station-section').style.display = '';
+  }
+  if (FROM) {
+    const ok = fromBoardRes.status === 'fulfilled' && fromBoardRes.value;
+    renderStationBoard(
+      ok ? fromBoardRes.value.boards || [] : [],
+      fromName, 'station-from-wrap', 'stn-label-from', '出發');
+  }
+  if (TO) {
+    const ok = toBoardRes.status === 'fulfilled' && toBoardRes.value;
+    renderStationBoard(
+      ok ? toBoardRes.value.boards || [] : [],
+      toName, 'station-to-wrap', 'stn-label-to', '到達');
+  }
+
+  // ─ Train stop list
+  if (trainRes.status === 'fulfilled' && !trainRes.value?.error) {
+    renderTrain(trainRes.value, liveData);
+  } else {
+    const msg = trainRes.status === 'fulfilled'
+      ? (trainRes.value?.error || '查詢失敗')
+      : '網路錯誤';
+    document.getElementById('train-content').innerHTML = '';
+    const errEl = document.getElementById('error-box');
+    errEl.textContent = `列車 ${TRAIN_NO} 查詢失敗：${msg}`;
+    errEl.style.display = 'block';
+    document.getElementById('header-route').textContent = '查無資料';
+  }
+
+  document.getElementById('page-footer').textContent =
+    `資料來源：TDX Open API（交通部運輸資料流通服務）　列車 ${TRAIN_NO}`;
+}
+
+loadAll();
+</script>
+</body>
+</html>
