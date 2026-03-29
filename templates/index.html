@@ -57,6 +57,24 @@
     justify-content: flex-start;
   }
 
+  .tdx-logo-link {
+    justify-self: end;
+    display: inline-flex;
+    align-items: center;
+    background: #fff;
+    border-radius: 6px;
+    padding: 3px 8px;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+  .tdx-logo-link:hover { opacity: 1; }
+  .tdx-logo-link img {
+    height: 26px;
+    width: auto;
+    display: block;
+  }
+
   .timer-display {
     font-family: var(--font-mono);
     font-size: 28px;
@@ -129,7 +147,16 @@
     box-shadow: 0 0 0 2px rgba(77,168,232,.18);
   }
 
-  select { cursor: pointer; min-width: 130px; }
+  select { cursor: pointer; min-width: 80px; }
+
+  /* ── City + Station cascading picker ── */
+  .station-picker {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .station-picker .city-sel  { min-width: 95px; }
+  .station-picker .stn-sel   { min-width: 100px; }
   input[type="text"] { width: 70px; }
   input[type="date"] { width: 140px; }
 
@@ -261,6 +288,9 @@
     .controls { padding: 10px 12px; gap: 8px; }
     select { min-width: 0; flex: 1; }
     .ctrl-group { flex: 1; }
+    .station-picker { flex-wrap: nowrap; }
+    .station-picker .city-sel { min-width: 80px; flex: 0 0 auto; }
+    .station-picker .stn-sel  { flex: 1; min-width: 0; }
     .btn { padding: 0 12px; font-size: 12px; }
     input[type="text"] { width: 60px; }
     input[type="date"] { width: 130px; }
@@ -443,6 +473,11 @@
     color: var(--fg-dim);
     border-top: 1px solid var(--border);
     background: var(--surface);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 </style>
 </head>
@@ -453,23 +488,32 @@
     <div class="header-icon">🚆</div>
     <div class="header-text">
       <h1>台鐵時刻表</h1>
-      <p>TDX Open API — 交通部運輸資料流通服務</p>
+      <p>資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</p>
     </div>
   </div>
   <div class="timer-display" id="timer">00:00:00</div>
+  <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
+    <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
+  </a>
 </header>
 
 <div class="controls">
   <div class="ctrl-group">
     <label>出發站</label>
-    <select id="from-sel"></select>
+    <div class="station-picker">
+      <select id="from-city-sel" class="city-sel"></select>
+      <select id="from-sel" class="stn-sel"></select>
+    </div>
   </div>
 
   <button class="swap-btn" id="swap-btn" title="互換車站">⇄</button>
 
   <div class="ctrl-group">
     <label>抵達站</label>
-    <select id="to-sel"></select>
+    <div class="station-picker">
+      <select id="to-city-sel" class="city-sel"></select>
+      <select id="to-sel" class="stn-sel"></select>
+    </div>
   </div>
 
   <div class="sep"></div>
@@ -531,7 +575,10 @@
   </div>
 </div>
 
-<footer id="source-footer">資料來源：TDX Open API（交通部運輸資料流通服務）</footer>
+<footer>
+  <span id="source-footer">資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</span>
+  <span>TDX Sample v1.0&nbsp;&nbsp;Copyright &copy; 2026 KevinRewolf</span>
+</footer>
 
 <script>
 // ── Station data injected from Flask ──────────────────────────────────────
@@ -546,7 +593,7 @@ let _nextTrainTimer = null; // setTimeout handle for next-train auto-refresh
 
 // ── Client-side Cache Manager ─────────────────────────────────────────────
 const CacheManager = {
-  OD_TTL:    10 * 60 * 1000,        // 10 minutes in ms
+  OD_TTL:    30 * 60 * 1000,        // 30 minutes in ms
   DAILY_TTL: 7  * 24 * 3600 * 1000, // 7 days in ms
   MAX_KEYS:  40,                     // evict oldest beyond this limit
 
@@ -663,27 +710,152 @@ function loadPrefs() {
   try { return JSON.parse(localStorage.getItem('tdx_prefs') || '{}'); } catch { return {}; }
 }
 function savePrefs(p) {
-  try { localStorage.setItem('tdx_prefs', JSON.stringify(p)); } catch {}
+  try {
+    const cur = loadPrefs();
+    localStorage.setItem('tdx_prefs', JSON.stringify({ ...cur, ...p }));
+  } catch {}
+}
+function trackUsage(code) {
+  const p = loadPrefs();
+  const freq = p.freq || {};
+  freq[code] = (freq[code] || 0) + 1;
+  savePrefs({ freq });
+}
+function getFreqCodes(n = 6) {
+  const freq = loadPrefs().freq || {};
+  return Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([code]) => code);
 }
 
-// ── Populate station dropdowns ────────────────────────────────────────────
-function buildStationOptions(sel, selected) {
+// ── City → stations grouping — server-injected from TDX API via Flask template ──
+// Refreshed from /api/station-groups below; localStorage cache applied synchronously.
+let CITY_STATIONS = {{ station_groups | tojson }};
+
+function getCityForCode(code) {
+  return CITY_STATIONS.find(g => g.codes.includes(code))?.city || CITY_STATIONS[0].city;
+}
+
+function buildCitySelect(sel, selectedCity) {
   sel.innerHTML = '';
-  STATIONS.forEach(s => {
+  // Prepend 常用車站 group if there is history
+  const freqCodes = getFreqCodes();
+  if (freqCodes.length) {
     const opt = document.createElement('option');
-    opt.value = s.code;
-    opt.textContent = `${s.name}（${s.code}）`;
-    if (s.code === selected) opt.selected = true;
+    opt.value = '常用車站';
+    opt.textContent = '★ 常用車站';
+    if ('常用車站' === selectedCity) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  CITY_STATIONS.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.city;
+    opt.textContent = g.city;
+    if (g.city === selectedCity) opt.selected = true;
     sel.appendChild(opt);
   });
 }
 
-const fromSel = document.getElementById('from-sel');
-const toSel   = document.getElementById('to-sel');
-const prefs   = loadPrefs();
+// 特等站 & 一等站 — derived from server-injected STATIONS (StationClass from TDX API)
+// 0 = 特等站, 1 = 一等站
+const SPECIAL_CLASS = new Set(STATIONS.filter(s => s.cls === 0).map(s => s.code));
+const FIRST_CLASS   = new Set(STATIONS.filter(s => s.cls === 1).map(s => s.code));
+const SECOND_CLASS  = new Set(STATIONS.filter(s => s.cls === 2).map(s => s.code));
+const THIRD_CLASS   = new Set(STATIONS.filter(s => s.cls === 3).map(s => s.code));
+const SIMPLE_CLASS  = new Set(STATIONS.filter(s => s.cls === 4).map(s => s.code));
 
-buildStationOptions(fromSel, prefs.from || '0970');
-buildStationOptions(toSel,   prefs.to   || '0990');
+// Return the highest-class marker visible for this city's station list.
+// minCls: lowest class value present in the city (0=特等 … 3=三等).
+// We show a prefix only for stations at that minimum level.
+function stationPrefix(code, freqSet, minCls) {
+  if (SPECIAL_CLASS.has(code))      return '◆ ';
+  if (FIRST_CLASS.has(code))        return '● ';
+  if (freqSet && freqSet.has(code)) return '★ ';
+  if (minCls >= 2 && SECOND_CLASS.has(code)) return '▸ ';
+  if (minCls >= 3 && THIRD_CLASS.has(code))  return '▹ ';
+  if (minCls >= 4 && SIMPLE_CLASS.has(code)) return '▫ ';
+  return '';
+}
+
+function buildStationSelect(sel, cityName, selectedCode) {
+  sel.innerHTML = '';
+  const freqCodes = getFreqCodes();
+  const freqSet   = new Set(freqCodes);
+  // Resolve codes list: special 常用車站 group or normal group
+  let codes;
+  if (cityName === '常用車站') {
+    codes = freqCodes;
+  } else {
+    const group = CITY_STATIONS.find(g => g.city === cityName);
+    if (!group) return;
+    codes = group.codes;
+  }
+  // Find the highest station class present in this city's list.
+  // minCls drives which tier gets a highlight prefix:
+  //   0 or 1 → only ◆/● shown (no extra tier)
+  //   2      → ▸ for 二等
+  //   3+     → ▹ for 三等 (city has neither 特/一/二等)
+  const minCls = codes.reduce((best, c) => {
+    const s = STATIONS.find(st => st.code === c);
+    return (s && s.cls >= 0 && s.cls < best) ? s.cls : best;
+  }, 99);
+  codes.forEach(code => {
+    const station = STATIONS.find(s => s.code === code);
+    if (!station) return;
+    const opt = document.createElement('option');
+    opt.value = station.code;
+    opt.textContent = stationPrefix(code, freqSet, minCls) + station.name;
+    if (station.code === selectedCode) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+}
+
+const fromCitySel = document.getElementById('from-city-sel');
+const toCitySel   = document.getElementById('to-city-sel');
+const fromSel     = document.getElementById('from-sel');
+const toSel       = document.getElementById('to-sel');
+const prefs       = loadPrefs();
+
+const _initFrom = prefs.from || '0970';
+const _initTo   = prefs.to   || '0990';
+
+// ── Station-groups cache ──────────────────────────────────────────────────
+const _SG_CACHE_KEY = 'tra_station_groups_v2';
+const _SG_CACHE_TTL = 30 * 24 * 3600 * 1000; // 30 days
+// Apply cached groups synchronously so the first build already uses live data.
+try {
+  const _c = JSON.parse(localStorage.getItem(_SG_CACHE_KEY) || 'null');
+  if (_c && Date.now() - _c.ts < _SG_CACHE_TTL && Array.isArray(_c.groups) && _c.groups.length)
+    CITY_STATIONS = _c.groups;
+} catch {}
+
+buildCitySelect(fromCitySel, getCityForCode(_initFrom));
+buildStationSelect(fromSel, fromCitySel.value, _initFrom);
+buildCitySelect(toCitySel, getCityForCode(_initTo));
+buildStationSelect(toSel, toCitySel.value, _initTo);
+
+// Refresh from API in the background; update cache and rebuild if data changed.
+fetch('/api/station-groups')
+  .then(r => r.json())
+  .then(groups => {
+    if (!Array.isArray(groups) || groups.length === 0) return;
+    try { localStorage.setItem(_SG_CACHE_KEY, JSON.stringify({ts: Date.now(), groups})); } catch {}
+    CITY_STATIONS = groups;
+    const savedFrom = fromSel.value;
+    const savedTo   = toSel.value;
+    buildCitySelect(fromCitySel, getCityForCode(savedFrom));
+    buildStationSelect(fromSel, fromCitySel.value, savedFrom);
+    buildCitySelect(toCitySel, getCityForCode(savedTo));
+    buildStationSelect(toSel, toCitySel.value, savedTo);
+  })
+  .catch(() => { /* keep current groups */ });
+
+// City change → rebuild station list
+fromCitySel.addEventListener('change', () => buildStationSelect(fromSel, fromCitySel.value, null));
+toCitySel.addEventListener('change',   () => buildStationSelect(toSel,   toCitySel.value,   null));
+
 
 const now = new Date();
 
@@ -692,9 +864,12 @@ document.getElementById('date-input').value = now.toISOString().slice(0, 10);
 
 // ── Swap ──────────────────────────────────────────────────────────────────
 document.getElementById('swap-btn').addEventListener('click', () => {
-  const tmp = fromSel.value;
-  fromSel.value = toSel.value;
-  toSel.value = tmp;
+  const tmpCity = fromCitySel.value;
+  const tmpCode = fromSel.value;
+  fromCitySel.value = toCitySel.value;
+  buildStationSelect(fromSel, fromCitySel.value, toSel.value);
+  toCitySel.value = tmpCity;
+  buildStationSelect(toSel, toCitySel.value, tmpCode);
   queryGeneral();
 });
 
@@ -923,6 +1098,8 @@ async function queryGeneral() {
   const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
   const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
   savePrefs({ from: fromCode, to: toCode });
+  trackUsage(fromCode);
+  trackUsage(toCode);
 
   // ── Client cache hit ──
   const cached = CacheManager.getOD(fromCode, toCode);
@@ -949,7 +1126,7 @@ async function queryGeneral() {
   const src = data.cached ? '📦 伺服器快取' : '🔄 即時';
   const s = CacheManager.stats();
   setStatus(`${src}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
-  document.getElementById('source-footer').textContent = '資料來源：TDX Open API（交通部運輸資料流通服務）　常態班表';
+  document.getElementById('source-footer').innerHTML = '資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　常態班表';
   fetchLive();
 }
 
@@ -997,8 +1174,9 @@ async function queryDaily() {
   const s = CacheManager.stats();
   setStatus(`📅 ${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
   document.getElementById('source-footer').textContent =
-    `資料來源：TDX Open API（交通部運輸資料流通服務）　${dateStr} 實際行駛班次`;
-  fetchLive();
+    `資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　${dateStr} 實際行駛班次`;
+  // fetchLive() is user-triggered only (即時 button) — not called automatically
+  // to avoid adding 2 extra TDX LiveBoard calls on every page load.
 }
 
 // ── Live delay overlay ─────────────────────────────────────────────────────

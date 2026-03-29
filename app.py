@@ -4,6 +4,7 @@
 Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 """
 
+import json
 import os
 import re
 import time
@@ -16,6 +17,82 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
 load_dotenv(Path(__file__).parent / ".env")
+
+# ─── TDX API Reference — all available TRA endpoints ─────────────────────
+# Base: https://tdx.transportdata.tw/api/basic
+#
+# ── v3 Static / Reference ─────────────────────────────────────────────────
+# GET /v3/Rail/TRA/Station                               取得車站基本資料
+# GET /v3/Rail/TRA/StationExit                           取得車站出入口基本資料
+# GET /v3/Rail/TRA/StationFacility                       取得車站設施資料
+# GET /v3/Rail/TRA/Line                                  取得路線基本資料
+# GET /v3/Rail/TRA/StationOfLine                         取得路線車站基本資料
+# GET /v3/Rail/TRA/TrainType                             取得所有列車車種資料
+# GET /v3/Rail/TRA/Shape                                 取得線型基本資料
+# GET /v3/Rail/TRA/Operator                              取得台鐵營運業者基本資料
+# GET /v3/Rail/TRA/LineNetwork                           取得路線網路拓撲基本資料
+# GET /v3/Rail/TRA/LineTransfer                          取得內部路線轉乘資料
+# GET /v3/Rail/TRA/StationTransfer                       取得車站跨運具轉乘資訊
+#
+# ── v3 Fare ───────────────────────────────────────────────────────────────
+# GET /v3/Rail/TRA/ODFare                                取得票價資料(檔案)
+# GET /v3/Rail/TRA/ODFare/{OriginID}/to/{DestID}         取得指定起迄站間票價資料
+#
+# ── v3 Timetable ──────────────────────────────────────────────────────────
+# GET /v3/Rail/TRA/GeneralTrainTimetable                 取得所有車次的定期時刻表資料   ← USED
+# GET /v3/Rail/TRA/GeneralTrainTimetable/TrainNo/{No}    取得指定[車次]的定期時刻表資料
+# GET /v3/Rail/TRA/GeneralStationTimetable               取得各站的定期站別時刻表資料
+# GET /v3/Rail/TRA/GeneralStationTimetable/Station/{ID}  取得指定[車站]的定期站別時刻表資料
+# GET /v3/Rail/TRA/SpecificTrainTimetable                取得所有特殊車次時刻表資料
+# GET /v3/Rail/TRA/SpecificTrainTimetable/TrainNo/{No}   取得指定[車次]的特殊車次時刻表資料
+# GET /v3/Rail/TRA/DailyTrainTimetable/Today             取得當天車次時刻表資料
+# GET /v3/Rail/TRA/DailyTrainTimetable/Today/TrainNo/{No} 取得當天指定[車次]的時刻表資料
+# GET /v3/Rail/TRA/DailyTrainTimetable/TrainDates        取得臺鐵每日時刻表所有供應的日期資料
+# GET /v3/Rail/TRA/DailyTrainTimetable/TrainDate/{Date}  取得指定[日期]所有車次的時刻表資料  ← USED
+# GET /v3/Rail/TRA/DailyTrainTimetable/OD/{Orig}/to/{Dest}/{Date}          取得指定[日期],[起迄站間]之站間時刻表資料(僅列出查詢的停靠站)
+# GET /v3/Rail/TRA/DailyTrainTimetable/OD/Inclusive/{Orig}/to/{Dest}/{Date} 取得指定[日期],[起迄站間]之站間時刻表資料
+# GET /v3/Rail/TRA/DailyStationTimetable/Today           取得當天各站站別時刻表資料
+# GET /v3/Rail/TRA/DailyStationTimetable/Today/Station/{ID} 取得當天指定[車站]的時刻表資料
+# GET /v3/Rail/TRA/DailyStationTimetable/TrainDate/{Date} 取得各站每日站別時刻表資料
+#
+# ── v3 Live ───────────────────────────────────────────────────────────────
+# GET /v3/Rail/TRA/StationLiveBoard                      取得列車即時到離站資料
+# GET /v3/Rail/TRA/StationLiveBoard/Station/{ID}         取得指定[車站]的列車即時到離站資料  ← USED (stationlive)
+# GET /v3/Rail/TRA/TrainLiveBoard                        取得列車即時位置置動態資料
+# GET /v3/Rail/TRA/TrainLiveBoard/TrainNo/{No}           取得指定[車次]的列車即時位置置動態資料  ← USED (trainlive)
+#
+# ── v3 Alerts / News ──────────────────────────────────────────────────────
+# GET /v3/Rail/TRA/Alert                                 取得營運通阻資料  ← USED
+# GET /v3/Rail/TRA/News                                  取得最新消息  ← USED
+#
+# ── v2 ────────────────────────────────────────────────────────────────────
+# GET /v2/Rail/TRA/Network                               取得臺鐵路網資料
+# GET /v2/Rail/TRA/Station                               取得車站基本資料
+# GET /v2/Rail/TRA/Line                                  取得路線基本資料
+# GET /v2/Rail/TRA/StationOfLine                         取得路線車站基本資料
+# GET /v2/Rail/TRA/TrainType                             取得所有列車車種資料
+# GET /v2/Rail/TRA/Shape                                 取得軌道路網實體路線圖資料
+# GET /v2/Rail/TRA/ODFare                                取得票價資料
+# GET /v2/Rail/TRA/ODFare/{OriginID}/to/{DestID}         取得指定[起迄站間]之票價資料
+# GET /v2/Rail/TRA/GeneralTrainInfo                      取得所有車次的定期車次資料
+# GET /v2/Rail/TRA/GeneralTrainInfo/TrainNo/{No}         取得指定[車次]的定期車次資料
+# GET /v2/Rail/TRA/GeneralTimetable                      取得所有車次的定期時刻表資料
+# GET /v2/Rail/TRA/GeneralTimetable/TrainNo/{No}         取得指定[車次]的定期時刻表資料
+# GET /v2/Rail/TRA/DailyTrainInfo/Today                  取得當天所有車次的車次資料
+# GET /v2/Rail/TRA/DailyTrainInfo/Today/TrainNo/{No}     取得當天指定[車次]的車次資料
+# GET /v2/Rail/TRA/DailyTrainInfo/TrainDate/{Date}       取得指定[日期]所有車次的車次資料
+# GET /v2/Rail/TRA/DailyTrainInfo/TrainNo/{No}/TrainDate/{Date} 取得指定[日期]與[車次]的車次資料
+# GET /v2/Rail/TRA/DailyTimetable/Today                  取得當天所有車次的時刻表資料
+# GET /v2/Rail/TRA/DailyTimetable/Today/TrainNo/{No}     取得當天指定[車次]的時刻表資料
+# GET /v2/Rail/TRA/DailyTimetable/TrainDates             取得台鐵每日時刻表所有供應的日期資料
+# GET /v2/Rail/TRA/DailyTimetable/TrainDate/{Date}       取得指定[日期]所有車次的時刻表資料
+# GET /v2/Rail/TRA/DailyTimetable/TrainNo/{No}/TrainDate/{Date} 取得指定[日期],[車次]的時刻表資料
+# GET /v2/Rail/TRA/DailyTimetable/Station/{ID}/{Date}    取得指定[日期],[車站]的站別時刻表資料
+# GET /v2/Rail/TRA/DailyTimetable/OD/{Orig}/to/{Dest}/{Date}  取得指定[日期],[起迄站間]之站間時刻表資料
+# GET /v2/Rail/TRA/LiveBoard                             取得車站別列車即時到離站電子看板(動態前後30分鐘的車次)
+# GET /v2/Rail/TRA/LiveBoard/Station/{ID}                取得指定[車站]列車即時到離站電子看板  ← USED (liveboard)
+# GET /v2/Rail/TRA/LiveTrainDelay                        取得列車即時準點/延誤時間資料
+# ─────────────────────────────────────────────────────────────────────────
 
 # ─── TDX 認證 — Key pool ──────────────────────────────────────────────────
 # Supports multiple key pairs. Set in env:
@@ -89,33 +166,320 @@ _trainlive_cache:   dict = {}      # {train_no: {"live": {...}, "fetched_at": fl
 _stationlive_cache: dict = {}      # {station_id: {"boards": [...], "fetched_at": float}}
 _cache_lock = threading.Lock()
 
-OD_CACHE_TTL          = 10 * 60          # 10 minutes  (matches client TTL)
+OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
 DAILY_CACHE_TTL       = 7 * 24 * 3600   # 7 days      (matches client TTL)
 LIVEBOARD_CACHE_TTL   = 60               # 60 seconds  (live data, short TTL)
 ALERT_CACHE_TTL       = 5  * 60         # 5 minutes
 NEWS_CACHE_TTL        = 60 * 60         # 1 hour
-TRAINLIVE_CACHE_TTL   = 30               # 30 seconds  (real-time position)
-STATIONLIVE_CACHE_TTL = 30               # 30 seconds  (real-time position)
+TRAINLIVE_CACHE_TTL   = 60               # 60 seconds  (real-time position)
+STATIONLIVE_CACHE_TTL = 60               # 60 seconds  (real-time position)
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
-STATIONS: dict[str, str] = {
-    "基隆": "0900", "三坑": "0910", "八堵": "0920", "七堵": "0930",
-    "百福": "0940", "五堵": "0950", "汐止": "0960", "汐科": "0970",
-    "南港": "0980", "松山": "0990", "臺北": "1000", "萬華": "1010",
-    "板橋": "1020", "浮洲": "1030", "樹林": "1040", "山佳": "1060",
-    "鶯歌": "1070", "桃園": "1080", "內壢": "1090", "中壢": "1100",
-    "埔心": "1110", "楊梅": "1120", "富岡": "1130", "新豐": "1170",
-    "湖口": "1160", "竹北": "1180", "新竹": "1210",
-    "竹南": "1250", "苗栗": "3160", "三義": "3190", "豐原": "3230",
-    "潭子": "3250", "臺中": "3300", "彰化": "3360", "員林": "3390",
-    "田中": "3420", "二水": "3430", "斗六": "3470", "斗南": "3480",
-    "嘉義": "4080", "新營": "4120", "臺南": "4220", "新左營": "4340",
-    "左營": "4350", "高雄": "4400", "鳳山": "4440", "屏東": "5000",
-    "花蓮": "7000", "新城": "7030", "宜蘭": "7190", "羅東": "7160",
-    "蘇澳新": "7130",
-}
+# Populated at startup by _load_seed_data() from seed_data.json,
+# then overwritten by _load_stations_from_api() on each successful TDX fetch.
+STATIONS: dict[str, str] = {}
 
 _TRIP_LINE_MAP = {1: "山線", 2: "海線", 3: "成追線"}
+
+# Branch lines cannot be derived from an address, so they are kept here.
+_BRANCH_LINE_GROUPS: list[dict] = [
+    {"city": "內灣線", "codes": ["1210","1190","1191","1192","1193","1201","1202","1203","1204","1205","1206","1207","1208"]},
+    {"city": "六家線", "codes": ["1193","1194"]},
+    {"city": "集集線", "codes": ["3430","3431","3432","3433","3434","3435","3436"]},
+    {"city": "成追線", "codes": ["3350","2260"]},
+    {"city": "沙崙線", "codes": ["4270","4271","4272"]},
+    {"city": "平溪線", "codes": ["7330","7331","7332","7333","7334","7335","7336"]},
+    {"city": "深澳線", "codes": ["7360","7361","7362"]},
+]
+
+# Populated by _load_stations_from_api(); city groups in geographic order.
+_STATION_GROUPS: list[dict] = []
+
+# code → StationClass int. 0=特等, 1=一等, 2=二等, 3=三等, 4=簡易
+# Populated at startup by _load_seed_data(), overwritten by API loader.
+_STATION_CLASSES: dict[str, int] = {}
+
+# Preferred north-to-south display order for cities.
+_CITY_ORDER = [
+    "基隆市","新北市","台北市","桃園市","新竹市","新竹縣",
+    "苗栗縣","台中市","彰化縣","南投縣","雲林縣","嘉義縣","嘉義市",
+    "台南市","高雄市","屏東縣","台東縣","花蓮縣","宜蘭縣",
+]
+
+# Virtual/special stations to hide from the UI picker.
+_HIDDEN_STATION_IDS: set[str] = {
+    "1001",   # 臺北-環島 — virtual station for round-island trains only
+    "5998",   # 南方小站  — maintenance/facility stop, not a regular passenger station
+    "5999",   # 潮州基地  — rolling-stock depot stop, not a regular passenger station
+}
+
+# ─── Seed data loader ───────────────────────────────────────────────────────
+_SEED_FILE            = Path(__file__).parent / "seed_data.json"
+_TIMETABLE_CACHE_FILE = Path(__file__).parent / "timetable_cache.json"
+
+def _load_seed_data() -> None:
+    """Load bootstrap station data from seed_data.json into module globals.
+    Called once at startup; on miss the globals stay empty until API loads."""
+    try:
+        seed = json.loads(_SEED_FILE.read_text(encoding="utf-8"))
+        if seed.get("stations"):
+            STATIONS.clear()
+            STATIONS.update(seed["stations"])
+        if seed.get("station_classes"):
+            _STATION_CLASSES.clear()
+            _STATION_CLASSES.update(
+                {k: int(v) for k, v in seed["station_classes"].items()}
+            )
+        if seed.get("station_groups"):
+            _STATION_GROUPS.clear()
+            _STATION_GROUPS.extend(seed["station_groups"])
+        print(
+            f"[seed] Loaded {len(STATIONS)} stations, "
+            f"{len(_STATION_GROUPS)} groups from {_SEED_FILE.name}"
+        )
+    except FileNotFoundError:
+        print(f"[seed] {_SEED_FILE.name} not found — waiting for API load")
+    except Exception as exc:
+        print(f"[seed] Load failed ({exc}) — waiting for API load")
+
+
+# ─── Timetable disk cache ──────────────────────────────────────────────────
+def _save_timetable_disk_cache() -> None:
+    """Serialize general + daily timetable caches to disk.
+    Called in a background thread after every successful TDX fetch so the
+    next server restart can skip those TDX calls entirely."""
+    try:
+        with _cache_lock:
+            general = {
+                "trains":     _timetable_cache.get("trains", []),
+                "fetched_at": _timetable_cache.get("fetched_at", 0),
+                "expire_iso": _timetable_cache.get("expire_iso", ""),
+            }
+            # Keep only recent/future dates to avoid unbounded growth.
+            cutoff = (date.today() - timedelta(days=1)).isoformat()
+            daily = {
+                k: {"trains": v["trains"], "fetched_at": v["fetched_at"]}
+                for k, v in _daily_cache.items()
+                if k >= cutoff
+            }
+        # Snapshot station classes outside the lock (dict is small, thread-safe read)
+        classes_snapshot = dict(_STATION_CLASSES)
+        payload = json.dumps(
+            {"general": general, "daily": daily, "station_classes": classes_snapshot},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        _TIMETABLE_CACHE_FILE.write_text(payload, encoding="utf-8")
+        size_kb = len(payload.encode()) // 1024
+        print(
+            f"[cache] Wrote {_TIMETABLE_CACHE_FILE.name} "
+            f"({size_kb} KB, {len(general['trains'])} general trains, {len(daily)} dates)"
+        )
+    except Exception as exc:
+        print(f"[cache] Disk write failed ({exc})")
+
+
+def _load_disk_caches() -> None:
+    """Restore general + daily timetable caches from disk at startup.
+    With both seed_data.json and timetable_cache.json present, the server
+    can serve the first user request with zero TDX API calls."""
+    try:
+        data = json.loads(_TIMETABLE_CACHE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"[cache] {_TIMETABLE_CACHE_FILE.name} not found — will build on first query")
+        return
+    except Exception as exc:
+        print(f"[cache] Disk load failed ({exc})")
+        return
+
+    general = data.get("general", {})
+    if general.get("trains"):
+        with _cache_lock:
+            _timetable_cache["trains"]     = general["trains"]
+            _timetable_cache["fetched_at"] = float(general.get("fetched_at", 0))
+            _timetable_cache["expire_iso"] = general.get("expire_iso", "")
+        print(f"[cache] Restored {len(general['trains'])} general trains from disk")
+
+    cutoff = (date.today() - timedelta(days=1)).isoformat()
+    loaded = 0
+    for date_str, entry in data.get("daily", {}).items():
+        if date_str < cutoff or not entry.get("trains"):
+            continue
+        with _cache_lock:
+            _daily_cache[date_str] = {
+                "trains":     entry["trains"],
+                "fetched_at": float(entry.get("fetched_at", 0)),
+            }
+        loaded += 1
+    if loaded:
+        print(f"[cache] Restored {loaded} daily timetable(s) from disk")
+
+    # Restore station classes — secondary source after seed_data.json.
+    # Only applied if _STATION_CLASSES is still empty (seed didn't have them).
+    cached_classes = {
+        k: int(v) for k, v in data.get("station_classes", {}).items()
+        if isinstance(v, (int, float))
+    }
+    if cached_classes and not _STATION_CLASSES:
+        _STATION_CLASSES.update(cached_classes)
+        print(f"[cache] Restored {len(cached_classes)} station classes from disk")
+
+
+# ─── Dynamic station loader ─────────────────────────────────────────────────
+# v2 returns StationClass as string "0"–"5" for all stations (v3 only has 0/1).
+# v2 also provides LocationCity directly, avoiding address parsing.
+_TDX_STATION_URL = (
+    "https://tdx.transportdata.tw/api/basic/v2/Rail/TRA/Station?$format=JSON"
+)
+_TDX_LINE_URL = (
+    "https://tdx.transportdata.tw/api/basic/v3/Rail/TRA/StationOfLine?$format=JSON"
+)
+
+# Display order for branch-line groups (names only — codes come from TDX API).
+_BRANCH_LINE_NAMES: tuple[str, ...] = (
+    "內灣線", "六家線", "集集線", "成追線", "沙崙線", "平溪線", "深澳線",
+)
+
+
+def _load_branch_lines() -> list[dict]:
+    """Fetch branch-line station groups from TDX StationOfLine API.
+    Returns [{city, codes}, ...] on success, or falls back to _BRANCH_LINE_GROUPS."""
+    try:
+        data = api_get(_TDX_LINE_URL)
+        if isinstance(data, dict):
+            # v3 may wrap in {"StationOfLines": [...]}
+            for key in ("StationOfLines", "TrainStationOfLines"):
+                if key in data:
+                    data = data[key]
+                    break
+        if not isinstance(data, list):
+            return _BRANCH_LINE_GROUPS
+        branch_map: dict[str, list[str]] = {}
+        for line in data:
+            name = (line.get("LineName") or {}).get("Zh_tw", "")
+            if name not in _BRANCH_LINE_NAMES:
+                continue
+            if line.get("Direction", 0) != 0:   # keep outbound direction only
+                continue
+            codes = [
+                s.get("StationID", "").strip()
+                for s in line.get("Stations", [])
+                if s.get("StationID", "").strip()
+            ]
+            if codes:
+                branch_map[name] = codes
+        result = [{"city": n, "codes": branch_map[n]}
+                  for n in _BRANCH_LINE_NAMES if n in branch_map]
+        if result:
+            print(f"[stations] Loaded {len(result)} branch line groups from TDX API")
+            return result
+        return _BRANCH_LINE_GROUPS
+    except Exception as exc:
+        print(f"[stations] StationOfLine API failed ({exc}), using built-in branch groups")
+        return _BRANCH_LINE_GROUPS
+
+
+def _load_stations_from_api() -> bool:
+    """Fetch all TRA stations from TDX v2 and update STATIONS, _VALID_CODES,
+    _STATION_CLASSES and _STATION_GROUPS in-place.
+    v2 returns StationClass as a string for all station tiers (0-5) and
+    provides LocationCity directly — no address parsing needed."""
+    # Snapshot branch-line groups from seed before any mutation so we can
+    # reuse them without firing the StationOfLine API call.
+    _branch_names_set = set(_BRANCH_LINE_NAMES)
+    seeded_branches = [g for g in _STATION_GROUPS if g.get("city") in _branch_names_set]
+    try:
+        data = api_get(_TDX_STATION_URL)
+        # v2 Station API returns a flat list directly
+        if not isinstance(data, list) or len(data) < 50:
+            return False
+
+        _TRAD_NORM = {"臺北": "台北", "臺中": "台中", "臺南": "台南", "臺東": "台東"}
+
+        new: dict[str, str] = {}
+        new_classes: dict[str, int] = {}
+        city_map: dict[str, list[str]] = {}
+        for item in data:
+            code = item.get("StationID", "").strip()
+            name = (item.get("StationName") or {}).get("Zh_tw", "").strip()
+            if not (code and name):
+                continue
+            if code in _HIDDEN_STATION_IDS:
+                continue
+            new[name] = code
+            # v2 StationClass is a string "0"–"5"; cast to int.
+            cls_raw = item.get("StationClass")
+            if cls_raw is not None:
+                try:
+                    new_classes[code] = int(cls_raw)
+                except (ValueError, TypeError):
+                    pass
+            # v2 provides LocationCity directly — no address parsing required.
+            city = (item.get("LocationCity") or "").strip()
+            for trad, simp in _TRAD_NORM.items():
+                city = city.replace(trad, simp)
+            if city:
+                city_map.setdefault(city, []).append(code)
+
+        if not new:
+            return False
+
+        STATIONS.clear()
+        STATIONS.update(new)
+        _VALID_CODES.clear()
+        _VALID_CODES.update(new.values())
+        # Only overwrite station classes when TDX actually returned StationClass
+        # Merge new API classes into the existing dict.
+        # TDX only returns StationClass for 特等/一等 (cls 0/1); 二等~簡易
+        # have null and are never in new_classes.  So we UPDATE rather than
+        # REPLACE — seed/hardcoded 二等/三等 entries survive each API refresh.
+        if new_classes:
+            _STATION_CLASSES.update(new_classes)
+
+        # Build ordered city groups
+        groups: list[dict] = []
+        seen: set[str] = set()
+        for city in _CITY_ORDER:
+            if city in city_map:
+                groups.append({"city": city, "codes": city_map[city]})
+                seen.add(city)
+        # Append any unexpected cities not in the order list
+        for city, codes in city_map.items():
+            if city not in seen:
+                groups.append({"city": city, "codes": codes})
+        # Reuse branch lines from seed if available — avoids StationOfLine API call
+        if seeded_branches:
+            groups.extend(seeded_branches)
+            print(f"[stations] Reused {len(seeded_branches)} branch line groups from seed")
+        else:
+            groups.extend(_load_branch_lines())
+        _STATION_GROUPS.clear()
+        _STATION_GROUPS.extend(groups)
+
+        print(f"[stations] Loaded {len(new)} stations, {len(groups)} groups from TDX API")
+
+        # Persist updated data to seed file so next startup is always fresh.
+        # Priority for station_classes: fresh API data > in-memory > file on disk.
+        try:
+            classes_to_save = new_classes if new_classes else dict(_STATION_CLASSES)
+            seed_out = {
+                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "stations":        new,
+                "station_classes": classes_to_save,
+                "station_groups":  _STATION_GROUPS,
+            }
+            _SEED_FILE.write_text(
+                json.dumps(seed_out, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(f"[seed] Wrote {_SEED_FILE.name} ({len(new)} stations, {len(seed_out['station_classes'])} classes)")
+        except Exception as write_exc:
+            print(f"[seed] Write failed ({write_exc})")
+
+        return True
+    except Exception as exc:
+        print(f"[stations] API load failed ({exc}), using seed fallback")
+        return False
 
 
 # ─── Token ─────────────────────────────────────────────────────────────────
@@ -201,6 +565,7 @@ def get_all_trains() -> list:
         _timetable_cache["trains"]     = trains
         _timetable_cache["fetched_at"] = time.time()
         _timetable_cache["expire_iso"] = data.get("ExpireDate", "")
+    threading.Thread(target=_save_timetable_disk_cache, daemon=True).start()
     return trains
 
 
@@ -237,6 +602,7 @@ def fetch_daily_trains(date_str: str) -> list:
                     info["BikeFlag"] = daily_bike[no]
             # Invalidate OD cache so updated BikeFlag is reflected
             _od_cache.clear()
+    threading.Thread(target=_save_timetable_disk_cache, daemon=True).start()
     return trains
 
 
@@ -362,16 +728,70 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    stations_list = [{"name": n, "code": c} for n, c in STATIONS.items()]
-    return render_template("index.html", stations=stations_list)
+    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
+                     for n, c in STATIONS.items()]
+    return render_template("index.html", stations=stations_list,
+                           station_groups=_STATION_GROUPS)
 
 
 @app.route("/api/stations")
 def api_stations():
-    return jsonify([{"name": n, "code": c} for n, c in STATIONS.items()])
+    return jsonify([{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
+                    for n, c in STATIONS.items()])
 
 
-_VALID_CODES = set(STATIONS.values())
+@app.route("/api/station-groups")
+def api_station_groups():
+    """Return city → station-code groups for the city picker.
+    Falls back to an empty list if the dynamic loader hasn't run yet."""
+    return jsonify(_STATION_GROUPS)
+
+
+# Load seed data + timetable disk cache first so every global is populated
+# before the first request arrives — zero TDX calls needed on warm restart.
+_load_seed_data()
+_load_disk_caches()
+_VALID_CODES: set[str] = set(STATIONS.values())
+
+# Guard: ensure _load_stations_from_api() runs exactly once, whether triggered
+# from the background thread or __main__ (prevents double calls that hit the
+# TDX 5-req/min rate limit).
+_station_load_done = False
+_station_load_lock = threading.Lock()
+
+
+def _run_station_load_once() -> None:
+    """Call _load_stations_from_api() at most once per process lifetime."""
+    global _station_load_done
+    with _station_load_lock:
+        if _station_load_done:
+            return
+        _station_load_done = True
+    with app.app_context():
+        _load_stations_from_api()
+
+
+# Try to load full station list from TDX API at startup.
+# Run in a background thread so the first page load (DailyTrainTimetable)
+# doesn't race with these 2 calls and blow the 5-req/min limit.
+def _startup_station_load():
+    time.sleep(5)   # brief pause — lets the server finish binding before calling TDX
+    # Skip API refresh if seed_data.json was written in the last 24 hours.
+    # Station data (names, codes, classes) changes extremely rarely, so an
+    # up-to-date seed avoids unnecessary TDX API calls on every restart.
+    try:
+        gen_at_str = json.loads(_SEED_FILE.read_text(encoding="utf-8")).get("generated_at", "")
+        if gen_at_str:
+            age_s = (datetime.now() - datetime.fromisoformat(gen_at_str)).total_seconds()
+            if age_s < 86400:   # 24 hours
+                print(f"[stations] Seed is {age_s/3600:.1f}h old — skipping API refresh")
+                return
+    except Exception:
+        pass
+    _run_station_load_once()
+
+
+threading.Thread(target=_startup_station_load, daemon=True).start()
 
 
 @app.route("/api/trains")
@@ -713,6 +1133,14 @@ def debug_cache():
                     }
                     for d in list(daily.keys())[:1]
                 }
+            },
+            "station_groups": {
+                "group_count": len(_STATION_GROUPS),
+                "groups": [
+                    {"city": g["city"], "count": len(g["codes"]),
+                     "sample": g["codes"][:3]}
+                    for g in _STATION_GROUPS
+                ]
             }
         })
 

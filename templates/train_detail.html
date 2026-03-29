@@ -94,6 +94,23 @@
     flex: 1;
   }
 
+  .tdx-logo-link {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .tdx-logo-link img {
+    height: 26px;
+    width: auto;
+    display: block;
+    background: #fff;
+    border-radius: 4px;
+    padding: 2px 6px;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+  }
+  .tdx-logo-link:hover img { opacity: 1; }
+
   /* ── Alert/News section ── */
   .section {
     padding: 16px 20px;
@@ -348,6 +365,11 @@
     color: var(--fg-dim);
     border-top: 1px solid var(--border);
     background: var(--surface);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 
   /* ── Station live board cards ── */
@@ -467,6 +489,9 @@
   <span class="header-train-no">🚆 {{ train_no }}</span>
   <span id="header-type"></span>
   <span class="header-route" id="header-route">載入中…</span>
+  <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
+    <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
+  </a>
 </header>
 
 <!-- ── Alert / News ─────────────────────────────────────────────────────── -->
@@ -501,7 +526,10 @@
   <div id="train-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
 </div>
 
-<footer id="page-footer">資料來源：TDX Open API（交通部運輸資料流通服務）</footer>
+<footer>
+  <span id="page-footer">資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</span>
+  <span>TDX Sample v1.0&nbsp;&nbsp;Copyright &copy; 2026 KevinRewolf</span>
+</footer>
 
 <script>
 const TRAIN_NO = "{{ train_no }}";
@@ -726,7 +754,7 @@ function renderTrain(data, liveData) {
                     : 'stop-name';
     const label = isFrom ? '<span class="hl-label hl-label-from">出發</span>'
                 : isTo   ? '<span class="hl-label hl-label-to">抵達</span>'
-                : isCurr ? '<span class="hl-label hl-label-live">現在</span>'
+                : isCurr ? '<span class="hl-label hl-label-live">已到站</span>'
                 : '';
     const timeClass = (isFrom || isTo || isCurr) ? 'stop-time main' : 'stop-time';
     const curr      = isCurr ? ' data-current="true"' : '';
@@ -837,8 +865,8 @@ async function loadAll() {
     document.getElementById('header-route').textContent = '查無資料';
   }
 
-  document.getElementById('page-footer').textContent =
-    `資料來源：TDX Open API（交通部運輸資料流通服務）　列車 ${TRAIN_NO}`;
+  document.getElementById('page-footer').innerHTML =
+    `資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　列車 ${TRAIN_NO}`;
 }
 
 loadAll();
