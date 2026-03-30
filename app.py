@@ -554,8 +554,9 @@ def _load_stations_from_api() -> bool:
             print(f"[stations] Reused {len(seeded_branches)} branch line groups from seed")
         else:
             groups.extend(_load_branch_lines())
-        _STATION_GROUPS.clear()
-        _STATION_GROUPS.extend(groups)
+        with _cache_lock:
+            _STATION_GROUPS.clear()
+            _STATION_GROUPS.extend(groups)
 
         print(f"[stations] Loaded {len(new)} stations, {len(groups)} groups from TDX API")
 
@@ -587,13 +588,6 @@ def _load_stations_from_api() -> bool:
 
 
 # ─── Token ─────────────────────────────────────────────────────────────────
-def get_token() -> str:
-    """Get a token using the current round-robin key (backward compat)."""
-    with _pool_lock:
-        key = _key_pool[_pool_index % len(_key_pool)]
-    return _get_token_for(key)
-
-
 def api_get(url: str) -> dict:
     """Fetch a TDX API URL with per-key rate limiting (max 5 req / 60 s per key).
 
@@ -608,7 +602,7 @@ def api_get(url: str) -> dict:
     global _pool_index
     _MAX_RETRIES = len(_key_pool) + 1
 
-    for attempt in range(_MAX_RETRIES):
+    for _ in range(_MAX_RETRIES):
         # Pick the key with the earliest available slot.
         # Tiebreak by distance from _pool_index (round-robin when all keys are free).
         with _pool_lock:
@@ -681,7 +675,7 @@ def get_all_trains() -> list:
 
     url = (
         "https://tdx.transportdata.tw/api/basic/v3/Rail/TRA"
-        "/GeneralTrainTimetable?$top=1000&$format=JSON"
+        "/GeneralTrainTimetable?$format=JSON"
     )
     data = api_get(url)
     trains = data.get("TrainTimetables", [])
@@ -701,10 +695,16 @@ def fetch_daily_trains(date_str: str) -> list:
 
     url = (
         f"https://tdx.transportdata.tw/api/basic/v3/Rail/TRA"
-        f"/DailyTrainTimetable/TrainDate/{date_str}?$top=2000&$format=JSON"
+        f"/DailyTrainTimetable/TrainDate/{date_str}?$format=JSON"
     )
     data = api_get(url)
     trains = data.get("TrainTimetables", [])
+    # Build BikeFlag lookup outside the lock (read-only on fresh `trains` list)
+    daily_bike = {
+        t.get("TrainInfo", {}).get("TrainNo"): t.get("TrainInfo", {}).get("BikeFlag")
+        for t in trains
+        if t.get("TrainInfo", {}).get("TrainNo")
+    }
     with _cache_lock:
         _daily_cache[date_str] = {"trains": trains, "fetched_at": time.time()}
         # Prune old dates
@@ -713,12 +713,7 @@ def fetch_daily_trains(date_str: str) -> list:
             del _daily_cache[k]
         # Sync BikeFlag from daily → general timetable cache
         general_trains = _timetable_cache.get("trains")
-        if general_trains:
-            daily_bike = {
-                t.get("TrainInfo", {}).get("TrainNo"): t.get("TrainInfo", {}).get("BikeFlag")
-                for t in trains
-                if t.get("TrainInfo", {}).get("TrainNo")
-            }
+        if general_trains and daily_bike:
             for t in general_trains:
                 info = t.get("TrainInfo", {})
                 no = info.get("TrainNo")
@@ -731,6 +726,11 @@ def fetch_daily_trains(date_str: str) -> list:
 
 
 # ─── Formatting helpers ────────────────────────────────────────────────────
+def _tdx_str(v) -> str:
+    """Extract Zh_tw string from a TDX multilingual object or plain string."""
+    return v.get("Zh_tw", "") if isinstance(v, dict) else str(v or "")
+
+
 def _format_train_type(raw: str) -> str:
     if raw.startswith("自強"):
         lower = raw.lower()
@@ -741,17 +741,7 @@ def _format_train_type(raw: str) -> str:
             return f"自強{m.group(1)}"
         return "自強"
     return re.sub(r"[(（][^)）]*[)）]", "", raw).strip()
-
-
-_RE_NO_STANDING = re.compile(
-    r"(?:(?:本(?:班次|列次))?不發售無座[位]?票[^。]*。?\s*"
-    r"(?:非持本班次車票旅客[^。\n]*。?\s*)?)+"
-)
-_RE_LOUNGE     = re.compile(r"第\d+節(?:車廂)?為騰雲座艙[^。]*。?\s*(?:為本[公司局]+公告[^。]*。?\s*)?")
-_RE_FREE_SEAT  = re.compile(r"(?:本(?:班次|列次))?第\d+[~\-]?\d*節(?:車廂)?為自由座車廂[^。]*。?\s*(?:非持本班次車票旅客[^。]*。?\s*)?")
-_RE_NON_HOLDER = re.compile(r"非持本班次車票旅客[^。]*。?\s*")
-_RE_SCHEDULE   = re.compile(r"^([逢][^。]+(?:行駛|停駛))[。]?")
-
+ 
 
 def _parse_note(raw: str) -> str:
     if not raw:
@@ -788,7 +778,6 @@ def filter_od(all_trains: list, from_code: str, to_code: str) -> list:
         end_st     = info.get("EndingStationName",   {}).get("Zh_tw", "")
         
         bike_flag = bool(info.get("BikeFlag", 0))
-        
         trip_line  = info.get("TripLine", 0)
         note       = info.get("Note", "")
 
@@ -827,18 +816,30 @@ def filter_od(all_trains: list, from_code: str, to_code: str) -> list:
 app = Flask(__name__)
 
 
+@app.after_request
+def set_security_headers(response):
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "img-src 'self' https://tdx.transportdata.tw; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "object-src 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+
 @app.route("/")
 def index():
     stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
                      for n, c in STATIONS.items()]
     return render_template("index.html", stations=stations_list,
                            station_groups=_STATION_GROUPS)
-
-
-@app.route("/api/stations")
-def api_stations():
-    return jsonify([{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
-                    for n, c in STATIONS.items()])
 
 
 @app.route("/api/station-groups")
@@ -918,8 +919,10 @@ def api_trains():
         ab = filter_od(all_trains, from_code, to_code)
         ba = filter_od(all_trains, to_code, from_code)
         now = time.time()
+        reverse_key = f"{to_code}_{from_code}"
         with _cache_lock:
-            _od_cache[cache_key] = {"ab": ab, "ba": ba, "fetched_at": now}
+            _od_cache[cache_key]   = {"ab": ab, "ba": ba, "fetched_at": now}
+            _od_cache[reverse_key] = {"ab": ba, "ba": ab, "fetched_at": now}
             # Evict expired entries
             expired = [k for k, v in _od_cache.items() if now - v["fetched_at"] > OD_CACHE_TTL]
             for k in expired:
@@ -947,9 +950,12 @@ def api_trains_daily():
     if from_code not in _VALID_CODES or to_code not in _VALID_CODES:
         return jsonify({"error": "Invalid station code"}), 400
     try:
-        datetime.strptime(date_str, "%Y-%m-%d")
+        date_val = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "date must be YYYY-MM-DD"}), 400
+    today = date.today()
+    if date_val < today - timedelta(days=2) or date_val > today + timedelta(days=90):
+        return jsonify({"error": "date must be within 2 days ago to 90 days ahead"}), 400
 
     try:
         raw = fetch_daily_trains(date_str)
@@ -963,12 +969,13 @@ def api_trains_daily():
     except Exception:
         return jsonify({"error": "Internal server error"}), 500
 
+
 @app.route("/api/liveboard")
 def api_liveboard():
     """Return delay times and full station board for trains at a given station.
     Uses v2 LiveBoard which reliably includes DepartureTime and ArrivalTime.
     Response: {delays: {trainNo: min}, boards: [{...}], cached, fetched_at}
-    Cached for 60 seconds."""
+    Cached for 120 seconds (LIVEBOARD_CACHE_TTL)."""
     station = request.args.get("station", "").strip()
     if not station:
         return jsonify({"error": "Missing 'station' parameter"}), 400
@@ -990,28 +997,31 @@ def api_liveboard():
         data = api_get(url)
         # v2 LiveBoard returns a flat list directly; TrainTypeName is a plain string
         trains_raw = data if isinstance(data, list) else data.get("TrainLiveBoards", [])
-        def _s(v):
-            return v.get("Zh_tw", "") if isinstance(v, dict) else str(v or "")
         delays = {}
         boards = []
         for t in trains_raw:
             no = t.get("TrainNo", "")
             if not no:
                 continue
-            delay = int(t.get("DelayTime", 0))
+            delay = int(t.get("DelayTime") or 0)
             delays[no] = delay
+            _raw_dir = t.get("Direction")
             boards.append({
                 "train_no":   no,
-                "train_type": _format_train_type(_s(t.get("TrainTypeName", ""))),
-                "dest":       _s(t.get("EndingStationName", "")),
+                "train_type": _format_train_type(_tdx_str(t.get("TrainTypeName", ""))),
+                "dest":       _tdx_str(t.get("EndingStationName", "")),
                 "arrival":    t.get("ScheduledArrivalTime", ""),
                 "departure":  t.get("ScheduledDepartureTime", ""),
                 "delay":      delay,
-                "direction":  int(t.get("Direction", -1)),
+                "direction":  int(_raw_dir) if _raw_dir is not None else -1,
             })
         now = time.time()
         with _cache_lock:
             _liveboard_cache[station] = {"delays": delays, "boards": boards, "fetched_at": now}
+            # Evict stale entries
+            expired = [k for k, v in _liveboard_cache.items() if now - v["fetched_at"] > LIVEBOARD_CACHE_TTL]
+            for k in expired:
+                del _liveboard_cache[k]
         return jsonify({"delays": delays, "boards": boards, "cached": False, "fetched_at": now})
     except requests.HTTPError as e:
         return jsonify({"error": f"TDX API error: {e}"}), 502
@@ -1089,7 +1099,7 @@ def api_train_detail(train_no: str):
 
 @app.route("/api/trainlive/<train_no>")
 def api_trainlive(train_no: str):
-    """Return real-time train position from TrainLiveBoard API. Cached 60 s."""
+    """Return real-time train position from TrainLiveBoard API. Cached 120 s (TRAINLIVE_CACHE_TTL)."""
     if not re.match(r"^\d{1,5}$", train_no):
         return jsonify({"error": "Invalid train number"}), 400
     with _cache_lock:
@@ -1117,11 +1127,15 @@ def api_trainlive(train_no: str):
             live = {
                 "station_id":   raw.get("StationID", ""),
                 "station_name": sname.get("Zh_tw", "") if isinstance(sname, dict) else sname,
-                "delay_time":   int(raw.get("DelayTime", 0)),
+                "delay_time":   int(raw.get("DelayTime") or 0),
                 "update_time":  raw.get("UpdateTime", ""),
             }
+        now = time.time()
         with _cache_lock:
-            _trainlive_cache[train_no] = {"live": live, "fetched_at": time.time()}
+            _trainlive_cache[train_no] = {"live": live, "fetched_at": now}
+            expired = [k for k, v in _trainlive_cache.items() if now - v["fetched_at"] > TRAINLIVE_CACHE_TTL]
+            for k in expired:
+                del _trainlive_cache[k]
         return jsonify({"live": live, "cached": False})
     except requests.HTTPError as e:
         return jsonify({"live": None, "error": f"TDX API error: {e}"}), 502
@@ -1241,4 +1255,4 @@ def debug_cache():
 
 if __name__ == "__main__":
     #app.run()
-    app.run(debug=True, port=5000)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000)
