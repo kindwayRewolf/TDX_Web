@@ -1374,20 +1374,20 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
                      : '<th style="font-family:var(--font-mono)">#</th><th>車種</th>');
   const thead = `<thead><tr>${th1}<th>終點</th><th style="text-align:right">${timeLabel}</th><th style="text-align:right">誤點</th></tr></thead>`;
 
-  // Split by TDX Direction field: 0 = 下行 (southbound), 1 = 上行 (northbound)
+  // Split by TDX Direction field: 0 = 往北 (northbound), 1 = 往南 (southbound)
   const all = boards || [];
   const hasDir = all.some(t => t.direction === 0 || t.direction === 1);
 
   let tbodyRows;
   if (hasDir) {
-    const downSlice  = _sliceBoards(all.filter(t => t.direction === 0), timeOf, hhmm);
-    const upSlice    = _sliceBoards(all.filter(t => t.direction === 1), timeOf, hhmm);
+    const southSlice = _sliceBoards(all.filter(t => t.direction === 1), timeOf, hhmm);
+    const northSlice = _sliceBoards(all.filter(t => t.direction === 0), timeOf, hhmm);
     const otherSlice = _sliceBoards(all.filter(t => t.direction !== 0 && t.direction !== 1), timeOf, hhmm);
-    if (!downSlice.length && !upSlice.length && !otherSlice.length) {
+    if (!southSlice.length && !northSlice.length && !otherSlice.length) {
       tbodyRows = null;
     } else {
-      tbodyRows = (downSlice.length  ? _dirRow('↓ 下行列車', 'dir-down') + _makeRows(downSlice,  timeOf) : '')
-               + (upSlice.length    ? _dirRow('↑ 上行列車', 'dir-up')   + _makeRows(upSlice,    timeOf) : '')
+      tbodyRows = (southSlice.length ? _dirRow('↓ 往南列車', 'dir-down') + _makeRows(southSlice, timeOf) : '')
+               + (northSlice.length ? _dirRow('↑ 往北列車', 'dir-up')   + _makeRows(northSlice, timeOf) : '')
                + (otherSlice.length ? _dirRow('　其他列車', '')          + _makeRows(otherSlice, timeOf) : '');
     }
   } else {
