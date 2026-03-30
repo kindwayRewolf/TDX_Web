@@ -517,11 +517,14 @@ async function fetchTrains(url, statusMsg) {
 }
 
 // ── Fare fetch (fire-and-forget, updates fareMap + re-renders) ─────────────
+let _fareGen = 0;
 async function fetchFare(fromCode, toCode) {
+  const gen = ++_fareGen;
   try {
     const resp = await fetch(`/api/fare?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
-    if (!resp.ok) return;
+    if (!resp.ok || gen !== _fareGen) return;
     const data = await resp.json();
+    if (gen !== _fareGen) return;
     fareMap = data.fares || {};
     renderTables();
   } catch { /* ignore — fare is non-critical */ }

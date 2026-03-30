@@ -748,7 +748,7 @@ def _format_train_type(raw: str) -> str:
             return f"自強{m.group(1)}"
         return "自強"
     return re.sub(r"[(（][^)）]*[)）]", "", raw).strip()
- 
+
 
 def _parse_note(raw: str) -> str:
     if not raw:
@@ -1235,29 +1235,37 @@ def api_fare():
         )
         data = api_get(url)
 
-        # Parse fares — the v3 response has a list of fare records.
-        # We want adult (TicketType=1) standard-cabin fares grouped by train category.
+        # Parse fares — the v3 response wraps records in {"ODFares": [...]}.
+        # Each ODFare has: TrainType (1=自強,2=莒光,3=復興,4=區間快,5=區間),
+        #   Direction (0=short route, 1=long way around the island loop),
+        #   TravelDistance, and a Fares[] array.
+        # Inside Fares[]: TicketType 1=one-way, FareClass 1=adult full-price.
+        # We must pick the SHORT direction and map TrainType → category name.
         od_list = data if isinstance(data, list) else data.get("ODFares", [data] if "Fares" in data else [])
+
+        # Determine the short-route direction (minimum TravelDistance).
+        min_dist = float("inf")
+        short_dir = 0
+        for od in od_list:
+            d = od.get("TravelDistance", float("inf"))
+            if d < min_dist:
+                min_dist = d
+                short_dir = od.get("Direction", 0)
+
+        _TTYPE = {1: "自強", 2: "莒光", 3: "復興", 4: "區間", 5: "區間"}
         fares: dict[str, int] = {}
         for od in od_list:
+            if od.get("Direction") != short_dir:
+                continue
+            cat = _TTYPE.get(od.get("TrainType"))
+            if not cat:
+                continue
             for f in od.get("Fares", []):
-                # TicketType 1 = 單程全票 (one-way adult)
-                if f.get("TicketType") != 1:
+                if f.get("TicketType") != 1 or f.get("FareClass") != 1:
                     continue
                 price = f.get("Price", 0)
-                if not price:
-                    continue
-                # FareClass determines the train category:
-                # 1=自強,  2=莒光,  3=復興,  4=區間
-                fc = f.get("FareClass")
-                if fc == 1:
-                    fares["自強"] = price
-                elif fc == 2:
-                    fares["莒光"] = price
-                elif fc == 3:
-                    fares["復興"] = price
-                elif fc == 4:
-                    fares["區間"] = price
+                if price and (cat not in fares or price < fares[cat]):
+                    fares[cat] = price
 
         now = time.time()
         reverse_key = f"{to_code}_{from_code}"
