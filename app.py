@@ -251,6 +251,10 @@ _STATION_GROUPS: list[dict] = []
 # Populated at startup by _load_seed_data(), overwritten by API loader.
 _STATION_CLASSES: dict[str, int] = {}
 
+# code → phone / address. Populated by _load_stations_from_api(), loaded from seed.
+_STATION_PHONES:    dict[str, str] = {}
+_STATION_ADDRESSES: dict[str, str] = {}
+
 # Preferred north-to-south display order for cities.
 _CITY_ORDER = [
     "基隆市","新北市","台北市","桃園市","新竹市","新竹縣",
@@ -296,6 +300,12 @@ def _load_seed_data() -> None:
                 codes = [c for c in g.get("codes", []) if c not in _HIDDEN_STATION_IDS]
                 if codes:
                     _STATION_GROUPS.append({"city": g["city"], "codes": codes})
+        if seed.get("station_phones"):
+            _STATION_PHONES.clear()
+            _STATION_PHONES.update(seed["station_phones"])
+        if seed.get("station_addresses"):
+            _STATION_ADDRESSES.clear()
+            _STATION_ADDRESSES.update(seed["station_addresses"])
         print(
             f"[seed] Loaded {len(STATIONS)} stations, "
             f"{len(_STATION_GROUPS)} groups from {_SEED_FILE.name}"
@@ -473,6 +483,8 @@ def _load_stations_from_api() -> bool:
 
         new: dict[str, str] = {}
         new_classes: dict[str, int] = {}
+        new_phones: dict[str, str] = {}
+        new_addresses: dict[str, str] = {}
         city_map: dict[str, list[str]] = {}
         for item in data:
             code = item.get("StationID", "").strip()
@@ -489,6 +501,14 @@ def _load_stations_from_api() -> bool:
                     new_classes[code] = int(cls_raw)
                 except (ValueError, TypeError):
                     pass
+            phone = (item.get("StationPhone") or "").strip()
+            if phone:
+                new_phones[code] = phone
+            addr = (item.get("StationAddress") or "").strip()
+            for trad, simp in _TRAD_NORM.items():
+                addr = addr.replace(trad, simp)
+            if addr:
+                new_addresses[code] = addr
             # v2 provides LocationCity directly — no address parsing required.
             city = (item.get("LocationCity") or "").strip()
             for trad, simp in _TRAD_NORM.items():
@@ -510,6 +530,12 @@ def _load_stations_from_api() -> bool:
             # any code present in seed but absent from the API response is preserved.
             if new_classes:
                 _STATION_CLASSES.update(new_classes)
+            if new_phones:
+                _STATION_PHONES.clear()
+                _STATION_PHONES.update(new_phones)
+            if new_addresses:
+                _STATION_ADDRESSES.clear()
+                _STATION_ADDRESSES.update(new_addresses)
 
         # Build ordered city groups
         groups: list[dict] = []
@@ -540,9 +566,11 @@ def _load_stations_from_api() -> bool:
         try:
             seed_out = {
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "stations":        new,
-                "station_classes": dict(_STATION_CLASSES),
-                "station_groups":  _STATION_GROUPS,
+                "stations":          new,
+                "station_classes":   dict(_STATION_CLASSES),
+                "station_groups":    _STATION_GROUPS,
+                "station_phones":    dict(_STATION_PHONES),
+                "station_addresses": dict(_STATION_ADDRESSES),
             }
             _SEED_FILE.write_text(
                 json.dumps(seed_out, ensure_ascii=False, indent=2),
@@ -1038,6 +1066,8 @@ def api_train_detail(train_no: str):
             "station_name": s.get("StationName", {}).get("Zh_tw", ""),
             "arrival":      s.get("ArrivalTime", ""),
             "departure":    s.get("DepartureTime", ""),
+            "phone":        _STATION_PHONES.get(s.get("StationID", ""), ""),
+            "address":      _STATION_ADDRESSES.get(s.get("StationID", ""), ""),
         }
         for s in train_item.get("StopTimes", [])
     ]

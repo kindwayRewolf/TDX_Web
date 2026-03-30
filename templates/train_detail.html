@@ -412,7 +412,9 @@
 
   /* Stop table: hide seq (#) and arrival columns on mobile */
   .is-mobile .stop-table .col-seq,
-  .is-mobile .stop-table .col-arr { display: none; }
+  .is-mobile .stop-table .col-arr,
+  .is-mobile .stop-table .col-phone,
+  .is-mobile .stop-table .col-addr { display: none; }
 
 </style>
 </head>
@@ -642,6 +644,8 @@ function renderTrain(data, liveData) {
       <td><span class="${nameClass}">${s.station_name || s.station_id}</span>${label}</td>
       <td class="${timeClass} col-arr">${s.arrival  || '\u2014'}</td>
       <td class="${timeClass}">${s.departure || '\u2014'}</td>
+      <td class="col-phone" style="font-size:12px;color:var(--fg-dim)">${s.phone ? `<a href="tel:${s.phone}" style="color:inherit;text-decoration:none">${s.phone}</a>` : ''}</td>
+      <td class="col-addr" style="font-size:12px;color:var(--fg-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.address || ''}</td>
     </tr>`;
   }).join('');
 
@@ -650,6 +654,7 @@ function renderTrain(data, liveData) {
       <table class="stop-table">
         <thead><tr>
           <th class="col-seq">#</th><th>車站</th><th class="col-arr">到站</th><th>離站</th>
+          <th class="col-phone">電話</th><th class="col-addr">地址</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
