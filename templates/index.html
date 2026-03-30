@@ -238,6 +238,103 @@
   .chip-reserved  { background: rgba(58,30,0,.6);  color: var(--gold);  border-color: rgba(245,200,66,.2); }
   .chip-local     { background: rgba(13,37,64,.8);  color: var(--blue);  border-color: rgba(77,168,232,.2); }
   .chip-express   { background: rgba(13,46,26,.8); color: var(--green); border-color: rgba(86,217,138,.2); }
+
+  /* ── Station live board (index page) ── */
+  #station-live-wrap {
+    padding: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .stn-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .stn-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-dim);
+    letter-spacing: .04em;
+  }
+  .stn-toggle-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color var(--transition), color var(--transition);
+  }
+  .stn-toggle-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .station-duo-inner { padding: 8px 16px 6px; }
+  .station-duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .station-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .station-card-header {
+    background: #061523;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stn-label {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .stn-label-from { background: rgba(77,168,232,.2);  color: var(--blue); }
+  .stn-label-to   { background: rgba(251,146,60,.2);  color: var(--orange, #fb923c); }
+  .stn-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .stn-table th {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--fg-dim);
+    font-weight: 500;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .stn-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(22,53,86,.4);
+    white-space: nowrap;
+  }
+  .stn-table tbody tr:hover td { background: rgba(77,168,232,.08); }
+  .stn-row-hl { background: rgba(77,168,232,.08); }
+  .stn-delay-pos { color: var(--red, #f87171);  font-weight: 600; }
+  .stn-delay-ok  { color: var(--green); font-weight: 600; }
+  @media (max-width: 600px) {
+    #station-live-wrap { }
+    .stn-section-header { padding: 5px 10px; }
+    .station-duo-inner { padding: 6px 8px 4px; }
+    .station-duo { grid-template-columns: 1fr; gap: 6px; }
+    .stn-table th, .stn-table td { padding: 4px 6px; font-size: 11px; }
+  }
   .chip.off { opacity: .38; filter: grayscale(.8); }
   .row-past td { opacity: 0.38; }
 
@@ -534,6 +631,19 @@
   <button class="btn btn-live" id="live-btn">🟡 即時狀態</button>
 </div>
 
+<div id="station-live-wrap" style="display:none">
+  <div class="stn-section-header">
+    <span class="stn-section-title">🚏 起訖站即時資訊</span>
+    <button class="stn-toggle-btn" id="stn-toggle-btn" title="切換顯示順序"></button>
+  </div>
+  <div class="station-duo-inner">
+    <div class="station-duo">
+      <div id="stn-from-wrap"></div>
+      <div id="stn-to-wrap"></div>
+    </div>
+  </div>
+</div>
+
 <div class="filters">
   <span class="filter-label">顯示車種</span>
   <label class="chip chip-reserved" id="chip-reserved">
@@ -592,6 +702,17 @@ let _nextTrainTimer = null; // setTimeout handle for next-train auto-refresh
 
 
 // ── Client-side Cache Manager ─────────────────────────────────────────────
+const _CACHE_VER = '3';  // bump to invalidate all OD/daily localStorage entries
+(function() {
+  const stored = localStorage.getItem('tdx_cache_ver');
+  if (stored !== _CACHE_VER) {
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('tdx_od_') || k.startsWith('tdx_daily_'))
+      .forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('tdx_cache_ver', _CACHE_VER);
+  }
+})();
+
 const CacheManager = {
   OD_TTL:    30 * 60 * 1000,        // 30 minutes in ms
   DAILY_TTL: 7  * 24 * 3600 * 1000, // 7 days in ms
@@ -988,15 +1109,18 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB,
     window.open(`/train/${row.dataset.trainNo}${params}`, '_blank');
   });
 
-  // Scroll so next upcoming train is the 3rd visible row (show 2 past rows above)
+  // Scroll so next upcoming train is the first visible row
   let nextRow = null;
   for (const row of scrollEl.querySelectorAll('tbody tr[data-dep]')) {
     if (row.dataset.dep >= nowHM) { nextRow = row; break; }
   }
   if (nextRow) {
-    const ROW_H = nextRow.offsetHeight || 44;
-    const rowTop = nextRow.offsetTop; // relative to table top
-    scrollEl.scrollTop = Math.max(0, rowTop - ROW_H * 0);
+    requestAnimationFrame(() => {
+      const containerRect = scrollEl.getBoundingClientRect();
+      const rowRect = nextRow.getBoundingClientRect();
+      const theadH = scrollEl.querySelector('thead')?.offsetHeight || 0;
+      scrollEl.scrollTop += rowRect.top - containerRect.top - theadH;
+    });
 
     // Schedule auto-refresh at the START of the minute AFTER departure.
     // e.g. train departs 18:38 → timer fires at 18:39:00.
@@ -1071,6 +1195,7 @@ async function fetchTrains(url, statusMsg) {
 async function queryGeneral() {
   const fromCode = fromSel.value;
   const toCode   = toSel.value;
+  if (!fromCode || !toCode) { showError('請選擇車站'); return; }
   if (fromCode === toCode) { showError('出發站與抵達站不能相同'); return; }
 
   const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
@@ -1089,6 +1214,7 @@ async function queryGeneral() {
     setStatus(`💾 本機快取　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
     document.getElementById('source-footer').textContent = '資料來源：本機快取（localStorage）　常態班表';
     fetchLive();
+    fetchStationBoards();
     return;
   }
 
@@ -1106,6 +1232,7 @@ async function queryGeneral() {
   setStatus(`${src}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
   document.getElementById('source-footer').innerHTML = '資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　常態班表';
   fetchLive();
+  fetchStationBoards();
 }
 
 // ── Daily query ───────────────────────────────────────────────────────────
@@ -1113,6 +1240,7 @@ async function queryDaily() {
   const fromCode = fromSel.value;
   const toCode   = toSel.value;
   const dateStr  = document.getElementById('date-input').value;
+  if (!fromCode || !toCode) { showError('請選擇車站'); return; }
   if (fromCode === toCode) { showError('出發站與抵達站不能相同'); return; }
   if (!dateStr) { showError('請選擇日期'); return; }
 
@@ -1131,6 +1259,7 @@ async function queryDaily() {
     const s = CacheManager.stats();
     setStatus(`💾 本機快取　${dateStr}　${fromName}→${toName}: ${trainsAB.length} 班　${toName}→${fromName}: ${trainsBA.length} 班　(${s.entries} 筆 / ${s.kb} KB)`);
     document.getElementById('source-footer').textContent = `資料來源：本機快取（localStorage）　${dateStr} 實際行駛班次`;
+    fetchStationBoards();
     return;
   }
 
@@ -1155,6 +1284,138 @@ async function queryDaily() {
     `資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章　${dateStr} 實際行駛班次`;
   // fetchLive() is user-triggered only (即時 button) — not called automatically
   // to avoid adding 2 extra TDX LiveBoard calls on every page load.
+  fetchStationBoards();
+}
+
+// ── Station live board ───────────────────────────────────────────────────────
+// stnMode: 0=車次|車種  1=車種|車次  2=合併(228普悠瑪)  3=合併(普悠瑪228)
+const STN_MODE_LABELS = ['車次｜車種', '車種｜車次', '車次車種', '車種車次'];
+let stnMode = (() => {
+  const s = localStorage.getItem('tdx_stn_mode');
+  if (s !== null) return Math.min(3, Math.max(0, parseInt(s, 10) || 0));
+  return localStorage.getItem('tdx_stn_type_first') === '1' ? 1 : 0;
+})();
+
+(function() {
+  const btn = document.getElementById('stn-toggle-btn');
+  btn.textContent = STN_MODE_LABELS[stnMode];
+})();
+
+document.getElementById('stn-toggle-btn').addEventListener('click', () => {
+  stnMode = (stnMode + 1) % 4;
+  localStorage.setItem('tdx_stn_mode', stnMode);
+  document.getElementById('stn-toggle-btn').textContent = STN_MODE_LABELS[stnMode];
+  // Re-render with stored boards
+  if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
+  if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
+});
+
+const _lastBoards = { from: null, to: null };
+
+function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  const isArr = labelText === '到達';
+  const timeOf = t => isArr ? (t.arrival || t.departure || '') : (t.departure || t.arrival || '');
+  const timeLabel = isArr ? '到站' : '離站';
+
+  const sorted = [...(boards || [])].sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
+  const now  = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  let anchorIdx = sorted.findIndex(t => timeOf(t) >= hhmm);
+  if (anchorIdx < 0) anchorIdx = Math.max(0, sorted.length - 3);
+  const slice = sorted.slice(anchorIdx, anchorIdx + 6);
+
+  if (!slice.length) {
+    wrap.innerHTML =
+      `<div class="station-card">
+        <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${stationName}</div>
+        <div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">目前無車次資訊</div>
+      </div>`;
+    return;
+  }
+
+  const rows = slice.map(t => {
+    const sched   = (timeOf(t) || '—').slice(0, 5);
+    const delayEl = t.delay > 0
+      ? `<span class="stn-delay-pos">+${t.delay}分</span>`
+      : `<span class="stn-delay-ok">準點</span>`;
+    const noSpan   = `<span style="font-family:var(--font-mono)">${t.train_no}</span>`;
+    const typeSpan = `<span style="color:var(--fg-dim)">${t.train_type}</span>`;
+    let col1;
+    if (stnMode >= 2) {
+      const inner = stnMode === 2 ? `${noSpan} ${typeSpan}` : `${typeSpan} ${noSpan}`;
+      col1 = `<td>${inner}</td>`;
+    } else {
+      col1 = stnMode === 1
+        ? `<td>${typeSpan}</td><td>${noSpan}</td>`
+        : `<td>${noSpan}</td><td>${typeSpan}</td>`;
+    }
+    return `<tr style="cursor:pointer" data-train-no="${t.train_no}" onclick="location.href='/train/${t.train_no}?from='+encodeURIComponent(fromSel.value)+'&to='+encodeURIComponent(toSel.value)">${col1}
+      <td style="color:var(--fg-dim)">${t.dest}</td>
+      <td style="font-family:var(--font-mono);text-align:right">${sched}</td>
+      <td style="text-align:right">${delayEl}</td>
+    </tr>`;
+  }).join('');
+
+  const th1 = stnMode >= 2
+    ? (stnMode === 2 ? '<th>車次車種</th>' : '<th>車種車次</th>')
+    : (stnMode === 1 ? '<th>車種</th><th style="font-family:var(--font-mono)">#</th>'
+                     : '<th style="font-family:var(--font-mono)">#</th><th>車種</th>');
+
+  wrap.innerHTML =
+    `<div class="station-card">
+      <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${stationName}</div>
+      <table class="stn-table">
+        <thead><tr>${th1}<th>終點</th>
+          <th style="text-align:right">${timeLabel}</th>
+          <th style="text-align:right">誤點</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function fetchStationBoards() {
+  const fromCode = fromSel.value;
+  const toCode   = toSel.value;
+  if (!fromCode || !toCode || fromCode === toCode) return;
+
+  const fromName = STATIONS.find(s => s.code === fromCode)?.name || fromCode;
+  const toName   = STATIONS.find(s => s.code === toCode)?.name   || toCode;
+
+  document.getElementById('station-live-wrap').style.display = 'block';
+  // Show placeholders while loading
+  document.getElementById('stn-from-wrap').innerHTML =
+    `<div class="station-card"><div class="station-card-header"><span class="stn-label stn-label-from">出發</span>${fromName}</div><div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">載入中…</div></div>`;
+  document.getElementById('stn-to-wrap').innerHTML =
+    `<div class="station-card"><div class="station-card-header"><span class="stn-label stn-label-to">到達</span>${toName}</div><div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">載入中…</div></div>`;
+
+  const [r1, r2] = await Promise.allSettled([
+    fetch(`/api/liveboard?station=${fromCode}`).then(r => r.json()),
+    fetch(`/api/liveboard?station=${toCode}`).then(r => r.json()),
+  ]);
+
+  const d1 = r1.status === 'fulfilled' ? r1.value : {};
+  const d2 = r2.status === 'fulfilled' ? r2.value : {};
+
+  _lastBoards.from = { boards: d1.boards || [], name: fromName };
+  _lastBoards.to   = { boards: d2.boards || [], name: toName };
+
+  renderStationBoard(d1.boards || [], fromName, 'stn-from-wrap', 'stn-label-from', '出發');
+  renderStationBoard(d2.boards || [], toName,   'stn-to-wrap',   'stn-label-to',   '到達');
+
+  // Also update delay overlay if live data was already shown
+  if (d1.delays || d2.delays) {
+    liveDelayMap = {};
+    for (const [no, delay] of Object.entries(d1.delays || {})) liveDelayMap[no] = delay;
+    for (const [no, delay] of Object.entries(d2.delays || {})) {
+      if (!(no in liveDelayMap) || liveDelayMap[no] === 0) liveDelayMap[no] = delay;
+    }
+    overlayDelays(document.getElementById('scroll-ab'));
+    overlayDelays(document.getElementById('scroll-ba'));
+  }
 }
 
 // ── Live delay overlay ─────────────────────────────────────────────────────
@@ -1241,6 +1502,7 @@ setInterval(updateTimer, 1000);
 
 // Auto-query on load with saved prefs — fetch today's timetable
 queryDaily();
+fetchStationBoards();
 </script>
 <script>
 // Warm-up ping on page load to wake Render free-tier from cold start.

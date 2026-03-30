@@ -242,8 +242,8 @@
 
   /* ── Stop table ── */
   .stop-table-wrap {
-    /* ~10 rows: each row ~37px + thead ~37px */
-    max-height: calc(37px * 11);
+    /* ~15 rows: each row ~37px + thead ~37px */
+    max-height: calc(37px * 16);
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -372,58 +372,7 @@
     gap: 4px;
   }
 
-  /* ── Station live board cards ── */
-  .station-duo {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
 
-  .station-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-
-  .station-card-header {
-    background: #061523;
-    padding: 7px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--fg);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .stn-label {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .04em;
-    white-space: nowrap;
-  }
-  .stn-label-from { background: rgba(77,168,232,.2);  color: var(--blue); }
-  .stn-label-to   { background: rgba(251,146,60,.2);  color: var(--orange); }
-
-  .stn-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-  .stn-table td {
-    padding: 5px 10px;
-    border-bottom: 1px solid rgba(22,53,86,.4);
-    white-space: nowrap;
-  }
-  .stn-row-hl { background: rgba(77,168,232,.1); }
-  .stn-row-hl td:first-child { border-left: 3px solid var(--gold); }
-  .stn-delay-pos { color: var(--red);   font-weight: 600; }
-  .stn-delay-ok  { color: var(--green); font-weight: 600; }
 
   @media (max-width: 600px) {
     header { padding: 10px 12px; gap: 10px; }
@@ -431,7 +380,6 @@
     .section { padding: 12px 12px; }
     .stop-table tbody td { padding: 7px 8px; }
     .stop-table thead th { padding: 7px 8px; font-size: 11px; }
-    .station-duo { grid-template-columns: 1fr; }
   }
 
   /* ── Mobile-specific overrides (is-mobile class set by JS) ── */
@@ -466,20 +414,6 @@
   .is-mobile .stop-table .col-seq,
   .is-mobile .stop-table .col-arr { display: none; }
 
-  /* Station boards: horizontal scroll on mobile */
-  .is-mobile .station-duo {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 10px;
-    padding-bottom: 4px;
-    scroll-snap-type: x mandatory;
-  }
-  .is-mobile .station-duo > div {
-    min-width: 75vw;
-    scroll-snap-align: start;
-    flex-shrink: 0;
-  }
 </style>
 </head>
 <body>
@@ -506,15 +440,6 @@
   <div class="section-title" id="news-title" onclick="toggleSection('news')">📰 最新消息</div>
   <div class="collapsible-body" id="news-body">
     <div id="news-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
-  </div>
-</div>
-
-<!-- ── Station live boards ────────────────────────────────────────────────── -->
-<div class="section" id="station-section" style="display:none">
-  <div class="section-title">🚏 起訖站即時資訊</div>
-  <div class="station-duo">
-    <div id="station-from-wrap"></div>
-    <div id="station-to-wrap"></div>
   </div>
 </div>
 
@@ -620,61 +545,6 @@ function escHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-// ── Render station live board card ──────────────────────────────────────
-function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
-  const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
-
-  // Sort by scheduled departure (or arrival) time
-  const sorted = [...(boards || [])].sort((a, b) =>
-    (a.departure || a.arrival || '').localeCompare(b.departure || b.arrival || '')
-  );
-
-  // Anchor near current time
-  const now  = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  let anchorIdx = sorted.findIndex(t => (t.departure || t.arrival || '') >= hhmm);
-  if (anchorIdx < 0) anchorIdx = Math.max(0, sorted.length - 3);
-  const start = Math.max(0, anchorIdx - 1);
-  const slice = sorted.slice(start, start + 6);
-
-  if (!slice.length) {
-    wrap.innerHTML =
-      `<div class="station-card">
-        <div class="station-card-header">
-          <span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}
-        </div>
-        <div style="padding:10px 12px;font-size:12px;color:var(--fg-dim)">\u76ee\u524d\u7121\u8eca\u6b21\u8cc7\u8a0a</div>
-      </div>`;
-    return;
-  }
-
-  const rows = slice.map(t => {
-    const isOur   = t.train_no === TRAIN_NO;
-    const rowCls  = isOur ? ' class="stn-row-hl"' : '';
-    const noStyle = isOur ? 'color:var(--gold);font-weight:700' : '';
-    const sched   = (t.departure || t.arrival || '\u2014').slice(0, 5);
-    const delayEl = t.delay > 0
-      ? `<span class="stn-delay-pos">+${t.delay}\u5206</span>`
-      : `<span class="stn-delay-ok">\u6e96\u9ede</span>`;
-    return `<tr${rowCls}>
-      <td><span style="${noStyle};font-family:var(--font-mono)">${t.train_no}</span></td>
-      <td style="color:var(--fg-dim)">${t.train_type}</td>
-      <td style="color:var(--fg-dim)">${t.dest}</td>
-      <td style="font-family:var(--font-mono);text-align:right">${sched}</td>
-      <td style="text-align:right">${delayEl}</td>
-    </tr>`;
-  }).join('');
-
-  wrap.innerHTML =
-    `<div class="station-card">
-      <div class="station-card-header">
-        <span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}
-      </div>
-      <table class="stn-table"><tbody>${rows}</tbody></table>
-    </div>`;
 }
 
 // ── Determine which stop index is "current" ───────────────────────────────
@@ -802,28 +672,55 @@ function renderTrain(data, liveData) {
 }
 
 // ── Load all data in parallel ──────────────────────────────────────────────
+function fetchWithTimeout(url, ms = 15000) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal })
+    .then(r => r.json())
+    .finally(() => clearTimeout(tid));
+}
+
+// ── Client-side cache for alert / news (15 min TTL) ──────────────────────
+const _DETAIL_CACHE_TTL = 15 * 60 * 1000;
+function _cacheGet(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || 'null');
+    if (v && Date.now() - v.ts < _DETAIL_CACHE_TTL) return v.data;
+  } catch {}
+  return null;
+}
+function _cacheSet(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 async function loadAll() {
-  const [trainRes, alertRes, newsRes, liveRes, fromBoardRes, toBoardRes] =
+  // Alert / news: serve from localStorage if fresh, else fetch
+  const cachedAlert = _cacheGet('tdx_detail_alert');
+  const cachedNews  = _cacheGet('tdx_detail_news');
+
+  const [trainRes, liveRes, alertRes, newsRes] =
     await Promise.allSettled([
-      fetch(`/api/train/${TRAIN_NO}`).then(r => r.json()),
-      fetch('/api/alert').then(r => r.json()),
-      fetch('/api/news').then(r => r.json()),
-      fetch(`/api/trainlive/${TRAIN_NO}`).then(r => r.json()),
-      FROM ? fetch(`/api/stationlive/${FROM}`).then(r => r.json()) : Promise.resolve(null),
-      TO   ? fetch(`/api/stationlive/${TO}`).then(r => r.json())   : Promise.resolve(null),
+      fetchWithTimeout(`/api/train/${TRAIN_NO}`),
+      fetchWithTimeout(`/api/trainlive/${TRAIN_NO}`),
+      cachedAlert ? Promise.resolve(cachedAlert) : fetchWithTimeout('/api/alert'),
+      cachedNews  ? Promise.resolve(cachedNews)  : fetchWithTimeout('/api/news'),
     ]);
 
   // ─ Alerts
-  if (alertRes.status === 'fulfilled' && !alertRes.value?.error) {
-    renderAlerts(alertRes.value.alerts || []);
+  const alertData = alertRes.status === 'fulfilled' ? alertRes.value : null;
+  if (alertData && !alertData.error) {
+    if (!cachedAlert) _cacheSet('tdx_detail_alert', alertData);
+    renderAlerts(alertData.alerts || []);
   } else {
     document.getElementById('alert-content').innerHTML =
       '<div class="empty-notice">通阻資訊暫時無法取得</div>';
   }
 
   // ─ News
-  if (newsRes.status === 'fulfilled' && !newsRes.value?.error) {
-    renderNews(newsRes.value.news || []);
+  const newsData = newsRes.status === 'fulfilled' ? newsRes.value : null;
+  if (newsData && !newsData.error) {
+    if (!cachedNews) _cacheSet('tdx_detail_news', newsData);
+    renderNews(newsData.news || []);
   } else {
     document.getElementById('news-content').innerHTML =
       '<div class="empty-notice">最新消息暫時無法取得</div>';
@@ -832,31 +729,6 @@ async function loadAll() {
   // ─ Train + live position
   const liveData = (liveRes.status === 'fulfilled' && liveRes.value?.live)
     ? liveRes.value.live : null;
-
-  // Derive station names from timetable stops (used for station board headers)
-  const allStopsRef = (trainRes.status === 'fulfilled' && !trainRes.value?.error)
-    ? (trainRes.value.stops || []) : [];
-  const fromStopObj = allStopsRef.find(s => s.station_id === FROM);
-  const toStopObj   = allStopsRef.find(s => s.station_id === TO);
-  const fromName    = fromStopObj?.station_name || FROM || '出發站';
-  const toName      = toStopObj?.station_name   || TO   || '到達站';
-
-  // ─ Station live boards (起訖站)
-  if (FROM || TO) {
-    document.getElementById('station-section').style.display = '';
-  }
-  if (FROM) {
-    const ok = fromBoardRes.status === 'fulfilled' && fromBoardRes.value;
-    renderStationBoard(
-      ok ? fromBoardRes.value.boards || [] : [],
-      fromName, 'station-from-wrap', 'stn-label-from', '出發');
-  }
-  if (TO) {
-    const ok = toBoardRes.status === 'fulfilled' && toBoardRes.value;
-    renderStationBoard(
-      ok ? toBoardRes.value.boards || [] : [],
-      toName, 'station-to-wrap', 'stn-label-to', '到達');
-  }
 
   // ─ Train stop list
   if (trainRes.status === 'fulfilled' && !trainRes.value?.error) {

@@ -58,7 +58,7 @@ load_dotenv(Path(__file__).parent / ".env")
 #
 # ── v3 Live ───────────────────────────────────────────────────────────────
 # GET /v3/Rail/TRA/StationLiveBoard                      取得列車即時到離站資料
-# GET /v3/Rail/TRA/StationLiveBoard/Station/{ID}         取得指定[車站]的列車即時到離站資料  ← USED (stationlive)
+# GET /v3/Rail/TRA/StationLiveBoard/Station/{ID}         取得指定[車站]的列車即時到離站資料
 # GET /v3/Rail/TRA/TrainLiveBoard                        取得列車即時位置置動態資料
 # GET /v3/Rail/TRA/TrainLiveBoard/TrainNo/{No}           取得指定[車次]的列車即時位置置動態資料  ← USED (trainlive)
 #
@@ -211,21 +211,20 @@ def _get_token_for(key: dict) -> str:
 _timetable_cache: dict = {}      # {"trains": [...], "fetched_at": float, "expire_iso": str}
 _daily_cache: dict = {}          # {date_str: {"trains": [...], "fetched_at": float}}
 _od_cache: dict = {}             # {"{fc}_{tc}": {"ab": [...], "ba": [...], "fetched_at": float}}
-_liveboard_cache: dict = {}      # {station_id: {"delays": {train_no: delay_min}, "fetched_at": float}}
+_liveboard_cache: dict = {}      # {station_id: {"delays": {train_no: delay_min}, "boards": [...], "fetched_at": float}}
 _alert_cache:     dict = {}      # {"items": [...], "fetched_at": float}
 _news_cache:      dict = {}      # {"items": [...], "fetched_at": float}
 _trainlive_cache:   dict = {}      # {train_no: {"live": {...}, "fetched_at": float}}
-_stationlive_cache: dict = {}      # {station_id: {"boards": [...], "fetched_at": float}}
 _cache_lock = threading.Lock()
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
 GENERAL_CACHE_TTL     = 12 * 3600        # 12 hours    (general timetable rarely changes)
 DAILY_CACHE_TTL       = 7 * 24 * 3600   # 7 days      (matches client TTL)
-LIVEBOARD_CACHE_TTL   = 60               # 60 seconds  (live data, short TTL)
-ALERT_CACHE_TTL       = 5  * 60         # 5 minutes
+LIVE_CACHE_TTL        = 120              # 120 seconds — shared by liveboard & trainlive
+LIVEBOARD_CACHE_TTL   = LIVE_CACHE_TTL
+TRAINLIVE_CACHE_TTL   = LIVE_CACHE_TTL
+ALERT_CACHE_TTL       = 15 * 60         # 15 minutes
 NEWS_CACHE_TTL        = 60 * 60         # 1 hour
-TRAINLIVE_CACHE_TTL   = 60               # 60 seconds  (real-time position)
-STATIONLIVE_CACHE_TTL = 60               # 60 seconds  (real-time position)
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
 # Populated at startup by _load_seed_data() from seed_data.json,
@@ -721,7 +720,7 @@ _RE_NO_STANDING = re.compile(
     r"(?:非持本班次車票旅客[^。\n]*。?\s*)?)+"
 )
 _RE_LOUNGE     = re.compile(r"第\d+節(?:車廂)?為騰雲座艙[^。]*。?\s*(?:為本[公司局]+公告[^。]*。?\s*)?")
-_RE_FREE_SEAT  = re.compile(r"第\d+[~\-]?\d*節(?:車廂)?為自由座車廂[^。]*。?\s*(?:非持本班次車票旅客[^。]*。?\s*)?")
+_RE_FREE_SEAT  = re.compile(r"(?:本(?:班次|列次))?第\d+[~\-]?\d*節(?:車廂)?為自由座車廂[^。]*。?\s*(?:非持本班次車票旅客[^。]*。?\s*)?")
 _RE_NON_HOLDER = re.compile(r"非持本班次車票旅客[^。]*。?\s*")
 _RE_SCHEDULE   = re.compile(r"^([逢][^。]+(?:行駛|停駛))[。]?")
 
@@ -733,29 +732,7 @@ def _parse_note(raw: str) -> str:
     _DAILY = "每日行駛。"
     if note.startswith(_DAILY):
         note = note[len(_DAILY):].strip()
-    parts = []
-    m = _RE_SCHEDULE.match(note)
-    if m:
-        parts.append(m.group(1))
-        note = note[m.end():].strip()
-    elif note.startswith("民國") or re.match(r"^\d{3}年", note):
-        end = note.find("。")
-        parts.append(note[:end] if end != -1 else note[:20])
-        note = note[end + 1:].strip() if end != -1 else ""
-    m2 = re.search(r"(在\S{1,4}跨日)", note)
-    if m2:
-        parts.append(m2.group(1))
-        note = (note[:m2.start()] + note[m2.end():]).strip()
-    if _RE_NO_STANDING.search(note):
-        note = _RE_NO_STANDING.sub("", note).strip()
-        parts.append("僅限有座票")
-    note = _RE_LOUNGE.sub("", note)
-    note = _RE_FREE_SEAT.sub("", note)
-    note = _RE_NON_HOLDER.sub("", note)
-    note = re.sub(r"※\s*", "", note).strip().strip("。").strip()
-    if note:
-        parts.append(note[:20] + ("…" if len(note) > 20 else ""))
-    return "　".join(p for p in parts if p.strip())
+    return note
 
 
 # ─── OD filter ────────────────────────────────────────────────────────────
@@ -960,7 +937,10 @@ def api_trains_daily():
 
 @app.route("/api/liveboard")
 def api_liveboard():
-    """Return current delay times for trains at a given station. Cached for 60 seconds."""
+    """Return delay times and full station board for trains at a given station.
+    Uses v2 LiveBoard which reliably includes DepartureTime and ArrivalTime.
+    Response: {delays: {trainNo: min}, boards: [{...}], cached, fetched_at}
+    Cached for 60 seconds."""
     station = request.args.get("station", "").strip()
     if not station:
         return jsonify({"error": "Missing 'station' parameter"}), 400
@@ -971,7 +951,8 @@ def api_liveboard():
         entry      = _liveboard_cache.get(station)
         fetched_at = entry["fetched_at"] if entry else 0
     if entry and time.time() - fetched_at < LIVEBOARD_CACHE_TTL:
-        return jsonify({"delays": entry["delays"], "cached": True, "fetched_at": fetched_at})
+        return jsonify({"delays": entry["delays"], "boards": entry["boards"],
+                        "cached": True, "fetched_at": fetched_at})
 
     try:
         url = (
@@ -979,17 +960,30 @@ def api_liveboard():
             f"/LiveBoard/Station/{station}?$format=JSON"
         )
         data = api_get(url)
-        # v2 LiveBoard returns a flat list directly
+        # v2 LiveBoard returns a flat list directly; TrainTypeName is a plain string
         trains_raw = data if isinstance(data, list) else data.get("TrainLiveBoards", [])
-        delays = {
-            t["TrainNo"]: int(t.get("DelayTime", 0))
-            for t in trains_raw
-            if t.get("TrainNo")
-        }
+        def _s(v):
+            return v.get("Zh_tw", "") if isinstance(v, dict) else str(v or "")
+        delays = {}
+        boards = []
+        for t in trains_raw:
+            no = t.get("TrainNo", "")
+            if not no:
+                continue
+            delay = int(t.get("DelayTime", 0))
+            delays[no] = delay
+            boards.append({
+                "train_no":   no,
+                "train_type": _format_train_type(_s(t.get("TrainTypeName", ""))),
+                "dest":       _s(t.get("EndingStationName", "")),
+                "arrival":    t.get("ScheduledArrivalTime", ""),
+                "departure":  t.get("ScheduledDepartureTime", ""),
+                "delay":      delay,
+            })
         now = time.time()
         with _cache_lock:
-            _liveboard_cache[station] = {"delays": delays, "fetched_at": now}
-        return jsonify({"delays": delays, "cached": False, "fetched_at": now})
+            _liveboard_cache[station] = {"delays": delays, "boards": boards, "fetched_at": now}
+        return jsonify({"delays": delays, "boards": boards, "cached": False, "fetched_at": now})
     except requests.HTTPError as e:
         return jsonify({"error": f"TDX API error: {e}"}), 502
     except RuntimeError:
@@ -1104,53 +1098,6 @@ def api_trainlive(train_no: str):
         return jsonify({"live": None, "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
         return jsonify({"live": None, "error": "Internal server error"}), 500
-
-
-@app.route("/api/stationlive/<station_id>")
-def api_stationlive(station_id: str):
-    """Return train live board for a station (StationLiveBoard v3). Cached 60 s."""
-    if not re.match(r"^\d{4}$", station_id):
-        return jsonify({"error": "Invalid station ID"}), 400
-    if station_id not in _VALID_CODES:
-        return jsonify({"error": "Invalid station ID"}), 400
-    with _cache_lock:
-        entry      = _stationlive_cache.get(station_id)
-        fetched_at = entry["fetched_at"] if entry else 0
-    if entry and time.time() - fetched_at < STATIONLIVE_CACHE_TTL:
-        return jsonify({"boards": entry["boards"], "cached": True})
-    try:
-        url  = (
-            f"https://tdx.transportdata.tw/api/basic/v3/Rail/TRA"
-            f"/StationLiveBoard/Station/{station_id}?$format=JSON"
-        )
-        data = api_get(url)
-        raw_list = (
-            data if isinstance(data, list)
-            else data.get("StationLiveBoards", [])
-        )
-        def _zh(v):
-            return v.get("Zh_tw", "") if isinstance(v, dict) else str(v or "")
-        boards = [
-            {
-                "train_no":   t.get("TrainNo", ""),
-                "train_type": _zh(t.get("TrainTypeName", "")),
-                "dest":       _zh(t.get("DestinationStationName", "")),
-                "arrival":    t.get("ScheduledArrivalTime", ""),
-                "departure":  t.get("ScheduledDepartureTime", ""),
-                "delay":      int(t.get("DelayTime", 0)),
-            }
-            for t in raw_list
-            if t.get("TrainNo")
-        ]
-        with _cache_lock:
-            _stationlive_cache[station_id] = {"boards": boards, "fetched_at": time.time()}
-        return jsonify({"boards": boards, "cached": False})
-    except requests.HTTPError as e:
-        return jsonify({"boards": [], "error": f"TDX API error: {e}"}), 502
-    except RuntimeError:
-        return jsonify({"boards": [], "error": "API rate limit exceeded, please try again later"}), 503
-    except Exception:
-        return jsonify({"boards": [], "error": "Internal server error"}), 500
 
 
 @app.route("/api/alert")
