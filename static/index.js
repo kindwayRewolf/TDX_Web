@@ -214,9 +214,15 @@ const _initTo   = prefs.to   || '0990';
 
 // ── Max rows selector ──────────────────────────────────────────────────────────────────
 const _rowsSel = document.getElementById('rows-sel');
+let _measuredRowH = 0, _measuredTheadH = 0;
 function _applyMaxRows(n) {
-  const h = n === 0 ? 'none' : `calc(40px * ${n} + 37px)`;
-  document.documentElement.style.setProperty('--tbl-max-h', h);
+  if (n === 0) {
+    document.documentElement.style.setProperty('--tbl-max-h', 'none');
+    return;
+  }
+  const rowH   = _measuredRowH  || 40;
+  const theadH = _measuredTheadH || 37;
+  document.documentElement.style.setProperty('--tbl-max-h', `${rowH * n + theadH}px`);
 }
 // Restore saved preference
 (function() {
@@ -463,6 +469,16 @@ function renderTables() {
     document.getElementById('count-ba'),
     toName, fromName, false, toCode, fromCode
   );
+
+  // Measure actual row heights and reapply max-rows if changed
+  const _el = document.getElementById('scroll-ab');
+  const _row = _el?.querySelector('tbody tr');
+  const _th  = _el?.querySelector('thead');
+  if (_row && _row.offsetHeight !== _measuredRowH) {
+    _measuredRowH  = _row.offsetHeight;
+    _measuredTheadH = _th?.offsetHeight || 37;
+    _applyMaxRows(parseInt(_rowsSel.value, 10));
+  }
 }
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────

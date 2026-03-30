@@ -6,6 +6,7 @@ Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 
 import collections
 import json
+import logging
 import os
 import re
 import time
@@ -16,6 +17,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+
+log = logging.getLogger(__name__)
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -573,10 +576,12 @@ def _load_stations_from_api() -> bool:
                 "station_phones":    dict(_STATION_PHONES),
                 "station_addresses": dict(_STATION_ADDRESSES),
             }
-            _SEED_FILE.write_text(
+            tmp = _SEED_FILE.with_suffix(".tmp")
+            tmp.write_text(
                 json.dumps(seed_out, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            tmp.replace(_SEED_FILE)
             print(f"[seed] Wrote {_SEED_FILE.name} ({len(new)} stations, {len(seed_out['station_classes'])} classes)")
         except Exception as write_exc:
             print(f"[seed] Write failed ({write_exc})")
@@ -933,6 +938,7 @@ def api_trains():
     except RuntimeError:
         return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/trains")
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -967,6 +973,7 @@ def api_trains_daily():
     except RuntimeError:
         return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/trains/daily")
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -1028,6 +1035,7 @@ def api_liveboard():
     except RuntimeError:
         return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/liveboard")
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -1142,6 +1150,7 @@ def api_trainlive(train_no: str):
     except RuntimeError:
         return jsonify({"live": None, "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/trainlive/%s", train_no)
         return jsonify({"live": None, "error": "Internal server error"}), 500
 
 
@@ -1166,6 +1175,7 @@ def api_alert():
     except RuntimeError:
         return jsonify({"alerts": [], "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/alert")
         return jsonify({"alerts": [], "error": "Internal server error"}), 500
 
 
@@ -1190,6 +1200,7 @@ def api_news():
     except RuntimeError:
         return jsonify({"news": [], "error": "API rate limit exceeded, please try again later"}), 503
     except Exception:
+        log.exception("Unexpected error in /api/news")
         return jsonify({"news": [], "error": "Internal server error"}), 500
 
 
