@@ -1007,6 +1007,7 @@ def api_liveboard():
                 "arrival":    t.get("ScheduledArrivalTime", ""),
                 "departure":  t.get("ScheduledDepartureTime", ""),
                 "delay":      delay,
+                "direction":  int(t.get("Direction", -1)),
             })
         now = time.time()
         with _cache_lock:

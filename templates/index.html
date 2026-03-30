@@ -245,14 +245,23 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
-  .stn-section-header {
+  .station-duo-outer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .station-win {
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .station-win:last-child { border-right: none; }
+  .stn-win-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 16px;
+    padding: 6px 12px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--fg-dim);
+    background: var(--surface);
   }
   .stn-section-title {
     font-size: 12px;
@@ -272,12 +281,6 @@
     transition: border-color var(--transition), color var(--transition);
   }
   .stn-toggle-btn:hover { border-color: var(--blue); color: var(--blue); }
-  .station-duo-inner { padding: 8px 16px 6px; }
-  .station-duo {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
   .station-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -325,14 +328,16 @@
     white-space: nowrap;
   }
   .stn-table tbody tr:hover td { background: rgba(77,168,232,.08); }
+  .stn-dir-row td { padding: 3px 8px; font-size: 10px; font-weight: 600; color: #facc15; pointer-events: none; }
+  .stn-dir-row.dir-down td { background: rgba(30,60,120,.60); }
+  .stn-dir-row.dir-up   td { background: rgba(20,80,160,.65); }
   .stn-row-hl { background: rgba(77,168,232,.08); }
   .stn-delay-pos { color: var(--red, #f87171);  font-weight: 600; }
   .stn-delay-ok  { color: var(--green); font-weight: 600; }
   @media (max-width: 600px) {
-    #station-live-wrap { }
-    .stn-section-header { padding: 5px 10px; }
-    .station-duo-inner { padding: 6px 8px 4px; }
-    .station-duo { grid-template-columns: 1fr; gap: 6px; }
+    .station-duo-outer { grid-template-columns: 1fr; }
+    .station-win { border-right: none; border-bottom: 1px solid var(--border); }
+    .station-win:last-child { border-bottom: none; }
     .stn-table th, .stn-table td { padding: 4px 6px; font-size: 11px; }
   }
   .chip.off { opacity: .38; filter: grayscale(.8); }
@@ -632,13 +637,18 @@
 </div>
 
 <div id="station-live-wrap" style="display:none">
-  <div class="stn-section-header">
-    <span class="stn-section-title">🚏 起訖站即時資訊</span>
-    <button class="stn-toggle-btn" id="stn-toggle-btn" title="切換顯示順序"></button>
-  </div>
-  <div class="station-duo-inner">
-    <div class="station-duo">
+  <div class="station-duo-outer">
+    <div class="station-win" id="stn-win-from">
+      <div class="stn-win-header">
+        <span class="stn-section-title">🚏 出發站即時</span>
+        <button class="stn-toggle-btn" id="stn-toggle-btn" title="切換顯示順序"></button>
+      </div>
       <div id="stn-from-wrap"></div>
+    </div>
+    <div class="station-win" id="stn-win-to">
+      <div class="stn-win-header">
+        <span class="stn-section-title">🏁 到達站即時</span>
+      </div>
       <div id="stn-to-wrap"></div>
     </div>
   </div>
@@ -1312,31 +1322,15 @@ document.getElementById('stn-toggle-btn').addEventListener('click', () => {
 
 const _lastBoards = { from: null, to: null };
 
-function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
-  const wrap = document.getElementById(wrapId);
-  if (!wrap) return;
+function _sliceBoards(list, timeOf, hhmm) {
+  const sorted = [...list].sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
+  let idx = sorted.findIndex(t => timeOf(t) >= hhmm);
+  if (idx < 0) idx = Math.max(0, sorted.length - 3);
+  return sorted.slice(idx, idx + 6);
+}
 
-  const isArr = labelText === '到達';
-  const timeOf = t => isArr ? (t.arrival || t.departure || '') : (t.departure || t.arrival || '');
-  const timeLabel = isArr ? '到站' : '離站';
-
-  const sorted = [...(boards || [])].sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
-  const now  = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  let anchorIdx = sorted.findIndex(t => timeOf(t) >= hhmm);
-  if (anchorIdx < 0) anchorIdx = Math.max(0, sorted.length - 3);
-  const slice = sorted.slice(anchorIdx, anchorIdx + 6);
-
-  if (!slice.length) {
-    wrap.innerHTML =
-      `<div class="station-card">
-        <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${stationName}</div>
-        <div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">目前無車次資訊</div>
-      </div>`;
-    return;
-  }
-
-  const rows = slice.map(t => {
+function _makeRows(slice, timeOf) {
+  return slice.map(t => {
     const sched   = (timeOf(t) || '—').slice(0, 5);
     const delayEl = t.delay > 0
       ? `<span class="stn-delay-pos">+${t.delay}分</span>`
@@ -1358,22 +1352,57 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
       <td style="text-align:right">${delayEl}</td>
     </tr>`;
   }).join('');
+}
+
+function _dirRow(label, cls) {
+  return `<tr class="stn-dir-row ${cls}"><td colspan="6">${label}</td></tr>`;
+}
+
+function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  const isArr = labelText === '到達';
+  const timeOf = t => isArr ? (t.arrival || t.departure || '') : (t.departure || t.arrival || '');
+  const timeLabel = isArr ? '到站' : '離站';
+  const now  = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
 
   const th1 = stnMode >= 2
     ? (stnMode === 2 ? '<th>車次車種</th>' : '<th>車種車次</th>')
     : (stnMode === 1 ? '<th>車種</th><th style="font-family:var(--font-mono)">#</th>'
                      : '<th style="font-family:var(--font-mono)">#</th><th>車種</th>');
+  const thead = `<thead><tr>${th1}<th>終點</th><th style="text-align:right">${timeLabel}</th><th style="text-align:right">誤點</th></tr></thead>`;
+
+  // Split by TDX Direction field: 0 = 下行 (southbound), 1 = 上行 (northbound)
+  const all = boards || [];
+  const hasDir = all.some(t => t.direction === 0 || t.direction === 1);
+
+  let tbodyRows;
+  if (hasDir) {
+    const downSlice  = _sliceBoards(all.filter(t => t.direction === 0), timeOf, hhmm);
+    const upSlice    = _sliceBoards(all.filter(t => t.direction === 1), timeOf, hhmm);
+    const otherSlice = _sliceBoards(all.filter(t => t.direction !== 0 && t.direction !== 1), timeOf, hhmm);
+    if (!downSlice.length && !upSlice.length && !otherSlice.length) {
+      tbodyRows = null;
+    } else {
+      tbodyRows = (downSlice.length  ? _dirRow('↓ 下行列車', 'dir-down') + _makeRows(downSlice,  timeOf) : '')
+               + (upSlice.length    ? _dirRow('↑ 上行列車', 'dir-up')   + _makeRows(upSlice,    timeOf) : '')
+               + (otherSlice.length ? _dirRow('　其他列車', '')          + _makeRows(otherSlice, timeOf) : '');
+    }
+  } else {
+    const slice = _sliceBoards(all, timeOf, hhmm);
+    tbodyRows = slice.length ? _makeRows(slice, timeOf) : null;
+  }
+
+  const tableHtml = tbodyRows !== null
+    ? `<table class="stn-table">${thead}<tbody>${tbodyRows}</tbody></table>`
+    : `<div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">目前無車次資訊</div>`;
 
   wrap.innerHTML =
     `<div class="station-card">
       <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${stationName}</div>
-      <table class="stn-table">
-        <thead><tr>${th1}<th>終點</th>
-          <th style="text-align:right">${timeLabel}</th>
-          <th style="text-align:right">誤點</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      ${tableHtml}
     </div>`;
 }
 
