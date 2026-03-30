@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 680" font-family="'Noto Sans TC','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#071a2e"/><stop offset="100%" stop-color="#0d2540"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#4da8e8"/></marker>
+    <marker id="arrowGold" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#f5c842"/></marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#56d98a"/></marker>
+    <marker id="arrowOrange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#fb923c"/></marker>
+    <marker id="arrowDim" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#6a8faa"/></marker>
+  </defs>
+  <rect width="820" height="680" rx="12" fill="url(#bg)"/>
+  <rect x="1" y="1" width="818" height="678" rx="12" fill="none" stroke="#163556"/>
+
+  <!-- Title -->
+  <text x="410" y="36" text-anchor="middle" fill="#f5c842" font-size="18" font-weight="700">🔄 頁面載入序列 Page Load Sequence</text>
+  <line x1="60" y1="50" x2="760" y2="50" stroke="#163556"/>
+
+  <!-- Column headers -->
+  <rect x="40"  y="60" width="150" height="30" rx="6" fill="rgba(77,168,232,.15)"/>
+  <text x="115" y="80" text-anchor="middle" fill="#4da8e8" font-size="13" font-weight="600">Browser</text>
+  <rect x="240" y="60" width="150" height="30" rx="6" fill="rgba(86,217,138,.15)"/>
+  <text x="315" y="80" text-anchor="middle" fill="#56d98a" font-size="13" font-weight="600">Flask Server</text>
+  <rect x="440" y="60" width="150" height="30" rx="6" fill="rgba(251,146,60,.15)"/>
+  <text x="515" y="80" text-anchor="middle" fill="#fb923c" font-size="13" font-weight="600">Disk Cache</text>
+  <rect x="640" y="60" width="140" height="30" rx="6" fill="rgba(245,200,66,.15)"/>
+  <text x="710" y="80" text-anchor="middle" fill="#f5c842" font-size="13" font-weight="600">TDX API</text>
+
+  <!-- Lifelines -->
+  <line x1="115" y1="95" x2="115" y2="660" stroke="#163556" stroke-dasharray="4"/>
+  <line x1="315" y1="95" x2="315" y2="660" stroke="#163556" stroke-dasharray="4"/>
+  <line x1="515" y1="95" x2="515" y2="660" stroke="#163556" stroke-dasharray="4"/>
+  <line x1="710" y1="95" x2="710" y2="660" stroke="#163556" stroke-dasharray="4"/>
+
+  <!-- Step 1: GET / -->
+  <line x1="115" y1="115" x2="310" y2="115" stroke="#4da8e8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="210" y="110" text-anchor="middle" fill="#c8dff0" font-size="11" font-weight="500">GET /</text>
+
+  <!-- Step 2: load seeds -->
+  <line x1="315" y1="135" x2="510" y2="135" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+  <text x="410" y="130" text-anchor="middle" fill="#fb923c" font-size="10">seed_data.json</text>
+
+  <line x1="315" y1="155" x2="510" y2="155" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+  <text x="410" y="150" text-anchor="middle" fill="#fb923c" font-size="10">timetable_cache</text>
+
+  <!-- Step 3: return HTML -->
+  <line x1="310" y1="180" x2="120" y2="180" stroke="#56d98a" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="210" y="175" text-anchor="middle" fill="#56d98a" font-size="10">index.html (STATIONS + CITY_STATIONS)</text>
+
+  <!-- Step 4: check localStorage -->
+  <rect x="55" y="200" width="120" height="28" rx="6" fill="rgba(245,200,66,.1)" stroke="#f5c842" stroke-width="1" stroke-dasharray="3"/>
+  <text x="115" y="219" text-anchor="middle" fill="#f5c842" font-size="10">檢查 localStorage</text>
+
+  <!-- Branch: cache hit -->
+  <rect x="40" y="240" width="148" height="42" rx="6" fill="rgba(86,217,138,.08)" stroke="#56d98a" stroke-width="1"/>
+  <text x="115" y="256" text-anchor="middle" fill="#56d98a" font-size="10" font-weight="600">✅ 快取命中</text>
+  <text x="115" y="272" text-anchor="middle" fill="#c8dff0" font-size="10">從 localStorage 渲染</text>
+
+  <!-- Branch: cache miss -->
+  <rect x="40" y="295" width="148" height="26" rx="6" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1"/>
+  <text x="115" y="313" text-anchor="middle" fill="#f87171" font-size="10" font-weight="600">❌ 快取未命中</text>
+
+  <!-- Step 5: API call -->
+  <line x1="115" y1="335" x2="310" y2="335" stroke="#4da8e8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="210" y="330" text-anchor="middle" fill="#c8dff0" font-size="10">/api/trains/daily</text>
+
+  <!-- Server checks cache -->
+  <rect x="255" y="345" width="120" height="28" rx="6" fill="rgba(245,200,66,.1)" stroke="#f5c842" stroke-width="1" stroke-dasharray="3"/>
+  <text x="315" y="364" text-anchor="middle" fill="#f5c842" font-size="10">檢查 _daily_cache</text>
+
+  <!-- Server cache hit -->
+  <rect x="240" y="385" width="148" height="26" rx="6" fill="rgba(86,217,138,.08)" stroke="#56d98a" stroke-width="1"/>
+  <text x="315" y="402" text-anchor="middle" fill="#56d98a" font-size="10">伺服器快取命中 → 直接回傳</text>
+
+  <!-- Server cache miss → TDX -->
+  <rect x="240" y="420" width="148" height="26" rx="6" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1"/>
+  <text x="315" y="438" text-anchor="middle" fill="#f87171" font-size="10">伺服器快取未命中</text>
+
+  <line x1="315" y1="455" x2="705" y2="455" stroke="#f5c842" stroke-width="2" marker-end="url(#arrowGold)"/>
+  <text x="510" y="450" text-anchor="middle" fill="#f5c842" font-size="10">DailyTrainTimetable</text>
+
+  <line x1="705" y1="475" x2="320" y2="475" stroke="#56d98a" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="510" y="470" text-anchor="middle" fill="#56d98a" font-size="10">完整每日時刻表</text>
+
+  <!-- filter + disk write -->
+  <text x="320" y="498" fill="#c8dff0" font-size="10">filter_od() → ab[], ba[]</text>
+  <line x1="315" y1="508" x2="510" y2="508" stroke="#6a8faa" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrowDim)"/>
+  <text x="410" y="504" text-anchor="middle" fill="#6a8faa" font-size="9">背景寫入磁碟</text>
+
+  <!-- Return JSON -->
+  <line x1="310" y1="530" x2="120" y2="530" stroke="#56d98a" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="210" y="525" text-anchor="middle" fill="#56d98a" font-size="10">JSON {ab, ba}</text>
+
+  <!-- Store + render -->
+  <rect x="40" y="543" width="148" height="26" rx="6" fill="rgba(86,217,138,.08)" stroke="#56d98a" stroke-width="1"/>
+  <text x="115" y="561" text-anchor="middle" fill="#c8dff0" font-size="10">存入 localStorage 並渲染</text>
+
+  <!-- LiveBoard -->
+  <line x1="115" y1="590" x2="310" y2="590" stroke="#4da8e8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="210" y="585" text-anchor="middle" fill="#c8dff0" font-size="10">/api/liveboard × 2</text>
+
+  <line x1="315" y1="610" x2="705" y2="610" stroke="#f5c842" stroke-width="2" marker-end="url(#arrowGold)"/>
+  <text x="510" y="605" text-anchor="middle" fill="#f5c842" font-size="10">v2/LiveBoard</text>
+
+  <line x1="705" y1="630" x2="320" y2="630" stroke="#56d98a" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <line x1="310" y1="645" x2="120" y2="645" stroke="#56d98a" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="210" y="641" text-anchor="middle" fill="#56d98a" font-size="10">{delays, boards}</text>
+</svg>

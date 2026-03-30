@@ -4,6 +4,7 @@
 let trainsAB = [], trainsBA = [];
 let dailyBikeMap  = {};   // trainNo → bool, populated from last daily query
 let liveDelayMap  = {};   // trainNo → delay minutes, populated from liveboard
+let fareMap       = {};   // category → price (e.g. {"自強": 100, "區間": 60})
 let _nextTrainTimer = null; // setTimeout handle for next-train auto-refresh
 
 
@@ -332,6 +333,15 @@ function getCategory(t) {
   return 'reserved';
 }
 
+function getFare(t) {
+  const tt = t.train_type;
+  if (tt.startsWith('區間')) return fareMap['區間'] || '';
+  if (tt.startsWith('莒光')) return fareMap['莒光'] || fareMap['復興'] || '';
+  if (tt.startsWith('復興')) return fareMap['復興'] || fareMap['莒光'] || '';
+  // 自強 and all other reserved types
+  return fareMap['自強'] || '';
+}
+
 // ── Remark pill renderer ──────────────────────────────────────────────────
 const _LINE_NAMES = new Set(['山線', '海線', '成追線']);
 function remarkTags(remark) {
@@ -385,12 +395,15 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB,
     const hasBike = t.train_no in dailyBikeMap ? dailyBikeMap[t.train_no] : Boolean(t.bike);
     const bikeTag = hasBike ? '<span class="remark-tag remark-bike">\ud83d\udeb2</span>' : '';
     const remarkHtml = bikeTag + remarkTags(t.remark);
+    const fare = getFare(t);
+    const fareHtml = fare ? `$${fare}` : '';
     return `<tr class="${trClass}" data-dep="${t.dep}" data-train-no="${escHtml(t.train_no)}">
       <td><span class="badge ${badgeClass}">${escHtml(t.train_type)}</span></td>
       <td class="train-no">${escHtml(t.train_no)}</td>
       <td class="time-dep">${t.dep}</td>
       <td class="time-arr">${t.arr}</td>
       <td class="duration">${t.duration}</td>
+      <td class="fare">${fareHtml}</td>
       <td class="left remark">${remarkHtml}</td>
     </tr>`;
   }).join('');
@@ -398,7 +411,7 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB,
   scrollEl.innerHTML = `
     <table>
       <thead><tr>
-        <th>車種</th><th>車次</th><th>出發</th><th>抵達</th><th>時長</th><th style="text-align:left">備註</th>
+        <th>車種</th><th>車次</th><th>出發</th><th>抵達</th><th>時長</th><th>價格</th><th style="text-align:left">備註</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -503,6 +516,17 @@ async function fetchTrains(url, statusMsg) {
   }
 }
 
+// ── Fare fetch (fire-and-forget, updates fareMap + re-renders) ─────────────
+async function fetchFare(fromCode, toCode) {
+  try {
+    const resp = await fetch(`/api/fare?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    fareMap = data.fares || {};
+    renderTables();
+  } catch { /* ignore — fare is non-critical */ }
+}
+
 // ── General timetable query ───────────────────────────────────────────────
 async function queryGeneral() {
   const fromCode = fromSel.value;
@@ -515,6 +539,7 @@ async function queryGeneral() {
   savePrefs({ from: fromCode, to: toCode });
   trackUsage(fromCode);
   trackUsage(toCode);
+  fetchFare(fromCode, toCode);
 
   // ── Client cache hit ──
   const cached = CacheManager.getOD(fromCode, toCode);
@@ -558,6 +583,7 @@ async function queryDaily() {
 
   const fromName = STATION_MAP.get(fromCode)?.name || fromCode;
   const toName   = STATION_MAP.get(toCode)?.name   || toCode;
+  fetchFare(fromCode, toCode);
 
   // ── Client cache hit ──
   const cached = CacheManager.getDaily(fromCode, toCode, dateStr);
@@ -853,6 +879,10 @@ async function fetchLive() {
 // ── Event bindings ────────────────────────────────────────────────────────
 document.getElementById('query-btn').addEventListener('click', queryGeneral);
 document.getElementById('daily-btn').addEventListener('click', queryDaily);
+document.getElementById('date-label').addEventListener('click', () => {
+  const d = new Date();
+  document.getElementById('date-input').value = `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
+});
 document.getElementById('live-btn').addEventListener('click', fetchLive);
 let _queryDebounce = null;
 function _debouncedQuery() {

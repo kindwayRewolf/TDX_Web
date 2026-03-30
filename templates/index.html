@@ -18,7 +18,10 @@
       <p>資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</p>
     </div>
   </div>
-  <div class="timer-display" id="timer">00:00:00</div>
+  <div class="header-center">
+    <div class="timer-display" id="timer">00:00:00</div>
+    <a class="about-link" href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener">關於本網站技術說明</a>
+  </div>
   <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
     <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
   </a>
@@ -50,7 +53,7 @@
   <div class="sep"></div>
 
   <div class="ctrl-group">
-    <label>指定日期</label>
+    <label id="date-label" style="cursor:pointer">指定日期</label>
     <input type="date" id="date-input">
   </div>
 
@@ -140,6 +143,7 @@
 <footer>
   <span id="source-footer">資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</span>
   <span>TDX Sample v1.0&nbsp;&nbsp;Copyright &copy; 2026 KevinRewolf</span>
+  <a href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener" style="color:#6a8faa;font-size:11px">關於本網站技術說明</a>
 </footer>
 
 <script>

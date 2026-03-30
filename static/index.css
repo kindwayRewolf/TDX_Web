@@ -78,6 +78,22 @@
     text-align: center;
   }
 
+  .about-link {
+    font-size: 11px;
+    color: var(--gold);
+    white-space: nowrap;
+    text-decoration: none;
+    transition: color var(--transition);
+  }
+  .about-link:hover { color: var(--blue); }
+
+  .header-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
   .header-icon {
     font-size: 28px;
     line-height: 1;
@@ -396,6 +412,7 @@
     .header-text h1 { font-size: 16px; white-space: nowrap; }
     .header-icon { font-size: 22px; }
     .timer-display { font-size: 22px; }
+    .about-link { font-size: 10px; }
 
     /* Controls: tighter, full-width selects */
     .controls { padding: 10px 12px; gap: 8px; }
@@ -426,6 +443,7 @@
     tbody td { padding: 7px 6px; }
     .time-dep { font-size: 13px; }
     .duration { font-size: 11px; }
+    .fare     { font-size: 11px; }
     .train-no { font-size: 12px; }
     .badge { font-size: 11px; padding: 2px 5px; }
     .remark-tag { font-size: 11px; padding: 1px 5px; }
@@ -534,6 +552,7 @@
   .time-dep { font-family: var(--font-mono); font-weight: 600; color: #fff; font-size: 15px; }
   .time-arr { font-family: var(--font-mono); color: var(--fg-dim); }
   .duration { font-family: var(--font-mono); font-size: 13px; color: var(--fg-dim); }
+  .fare     { font-family: var(--font-mono); font-size: 13px; color: var(--green); white-space: nowrap; }
   .train-no { font-family: var(--font-mono); font-size: 14px; }
   .remark   { font-size: 13px; color: var(--fg-dim); text-align: left; max-width: 240px; }
   .remark-tag {

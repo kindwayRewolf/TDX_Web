@@ -218,6 +218,7 @@ _liveboard_cache: dict = {}      # {station_id: {"delays": {train_no: delay_min}
 _alert_cache:     dict = {}      # {"items": [...], "fetched_at": float}
 _news_cache:      dict = {}      # {"items": [...], "fetched_at": float}
 _trainlive_cache:   dict = {}      # {train_no: {"live": {...}, "fetched_at": float}}
+_fare_cache:        dict = {}      # {"{fc}_{tc}": {"fares": {...}, "fetched_at": float}}
 _cache_lock = threading.Lock()
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
@@ -228,6 +229,7 @@ LIVEBOARD_CACHE_TTL   = LIVE_CACHE_TTL
 TRAINLIVE_CACHE_TTL   = LIVE_CACHE_TTL
 ALERT_CACHE_TTL       = 15 * 60         # 15 minutes
 NEWS_CACHE_TTL        = 60 * 60         # 1 hour
+FARE_CACHE_TTL        = 24 * 3600       # 24 hours  (fares rarely change)
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
 # Populated at startup by _load_seed_data() from seed_data.json,
@@ -1202,6 +1204,80 @@ def api_news():
     except Exception:
         log.exception("Unexpected error in /api/news")
         return jsonify({"news": [], "error": "Internal server error"}), 500
+
+
+@app.route("/api/fare")
+def api_fare():
+    """Return adult fares for an OD pair, keyed by train category.
+
+    Response: {"fares": {"自強": 100, "莒光": 80, "復興": 70, "區間": 60}, "cached": bool}
+    """
+    from_code = request.args.get("from", "").strip()
+    to_code   = request.args.get("to",   "").strip()
+
+    if not from_code or not to_code:
+        return jsonify({"error": "Missing 'from' or 'to' parameter"}), 400
+    if from_code not in _VALID_CODES or to_code not in _VALID_CODES:
+        return jsonify({"error": "Invalid station code"}), 400
+    if from_code == to_code:
+        return jsonify({"fares": {}, "cached": True})
+
+    cache_key = f"{from_code}_{to_code}"
+    with _cache_lock:
+        entry = _fare_cache.get(cache_key)
+    if entry and time.time() - entry["fetched_at"] < FARE_CACHE_TTL:
+        return jsonify({"fares": entry["fares"], "cached": True})
+
+    try:
+        url = (
+            f"https://tdx.transportdata.tw/api/basic/v3/Rail/TRA"
+            f"/ODFare/{from_code}/to/{to_code}?$format=JSON"
+        )
+        data = api_get(url)
+
+        # Parse fares — the v3 response has a list of fare records.
+        # We want adult (TicketType=1) standard-cabin fares grouped by train category.
+        od_list = data if isinstance(data, list) else data.get("ODFares", [data] if "Fares" in data else [])
+        fares: dict[str, int] = {}
+        for od in od_list:
+            for f in od.get("Fares", []):
+                # TicketType 1 = 單程全票 (one-way adult)
+                if f.get("TicketType") != 1:
+                    continue
+                price = f.get("Price", 0)
+                if not price:
+                    continue
+                # FareClass determines the train category:
+                # 1=自強,  2=莒光,  3=復興,  4=區間
+                fc = f.get("FareClass")
+                if fc == 1:
+                    fares["自強"] = price
+                elif fc == 2:
+                    fares["莒光"] = price
+                elif fc == 3:
+                    fares["復興"] = price
+                elif fc == 4:
+                    fares["區間"] = price
+
+        now = time.time()
+        reverse_key = f"{to_code}_{from_code}"
+        with _cache_lock:
+            _fare_cache[cache_key]   = {"fares": fares, "fetched_at": now}
+            # Fare is same in both directions for TRA
+            _fare_cache[reverse_key] = {"fares": fares, "fetched_at": now}
+            # Evict expired
+            expired = [k for k, v in _fare_cache.items() if now - v["fetched_at"] > FARE_CACHE_TTL]
+            for k in expired:
+                del _fare_cache[k]
+
+        return jsonify({"fares": fares, "cached": False})
+    except requests.HTTPError as e:
+        return jsonify({"fares": {}, "error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"fares": {}, "error": "API rate limit exceeded"}), 503
+    except Exception:
+        log.exception("Unexpected error in /api/fare")
+        return jsonify({"fares": {}, "error": "Internal server error"}), 500
 
 
 @app.route("/health")
