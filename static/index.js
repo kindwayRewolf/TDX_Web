@@ -913,4 +913,4 @@ setInterval(updateTimer, 1000);
 queryDaily();
 
 // Warm-up ping on page load to wake Render free-tier from cold start.
-fetch("/health").catch(() => {});
+//fetch("/health").catch(() => {});

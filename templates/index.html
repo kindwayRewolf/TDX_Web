@@ -151,5 +151,10 @@ const STATIONS = {{ stations | tojson }};
 let CITY_STATIONS = {{ station_groups | tojson }};
 </script>
 <script src="{{ url_for('static', filename='index.js') }}"></script>
+<script>
+// Warm-up ping on page load to wake Render free-tier from cold start.
+fetch("/health").catch(() => {});
+</script>
+
 </body>
 </html>
