@@ -98,6 +98,10 @@ load_dotenv(Path(__file__).parent / ".env")
 # GET /v2/Rail/TRA/LiveTrainDelay                        取得列車即時準點/延誤時間資料
 # ─────────────────────────────────────────────────────────────────────────
 
+# ─── Static asset cache buster ─────────────────────────────────────────────
+# Bump this string whenever JS/CSS changes to force browsers to refetch.
+_CACHE_VER = "20260331a"
+
 # ─── TDX 認證 — Key pool ──────────────────────────────────────────────────
 # Supports multiple key pairs. Set in env:
 #   TDX_CLIENT_ID / TDX_CLIENT_SECRET        ← key #0 (required, existing)
@@ -846,7 +850,8 @@ def index():
     stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
                      for n, c in STATIONS.items()]
     return render_template("index.html", stations=stations_list,
-                           station_groups=_STATION_GROUPS)
+                           station_groups=_STATION_GROUPS,
+                           cache_ver=_CACHE_VER)
 
 
 @app.route("/api/station-groups")
