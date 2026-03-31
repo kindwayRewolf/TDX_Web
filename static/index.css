@@ -361,6 +361,9 @@
       padding: 5px 12px;
       border-bottom: 1px solid var(--border);
       background: var(--surface);
+      position: sticky;
+      top: var(--header-h, 50px);
+      z-index: 50;
     }
     .stn-board-view-btn {
       background: var(--panel);

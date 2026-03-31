@@ -667,17 +667,23 @@ function _applyStnBoardView() {
   if (btn) btn.textContent = _STN_BOARD_VIEW_LABELS[stnBoardView];
 }
 
-document.getElementById('stn-toggle-btn').addEventListener('click', () => {
-  stnMode = (stnMode + 1) % 4;
-  localStorage.setItem('tdx_stn_mode', stnMode);
-  document.getElementById('stn-toggle-btn').textContent = STN_MODE_LABELS[stnMode];
-  if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
-  if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
-});
-
-document.getElementById('stn-board-view-btn').addEventListener('click', () => {
-  stnBoardView = (stnBoardView + 1) % 4;
-  _applyStnBoardView();
+// Use event delegation on document so handlers fire reliably on mobile
+// even though station-live-wrap starts as display:none.
+document.addEventListener('click', e => {
+  const toggleBtn = e.target.closest('#stn-toggle-btn');
+  if (toggleBtn) {
+    stnMode = (stnMode + 1) % 4;
+    localStorage.setItem('tdx_stn_mode', stnMode);
+    toggleBtn.textContent = STN_MODE_LABELS[stnMode];
+    if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
+    if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
+    return;
+  }
+  const viewBtn = e.target.closest('#stn-board-view-btn');
+  if (viewBtn) {
+    stnBoardView = (stnBoardView + 1) % 4;
+    _applyStnBoardView();
+  }
 });
 window.addEventListener('resize', _applyStnBoardView);
 
@@ -907,6 +913,15 @@ function updateTimer() {
 // Update timer immediately and every second
 updateTimer();
 setInterval(updateTimer, 1000);
+
+// Measure sticky header height so mobile bar pins just below it
+(function() {
+  const hdr = document.querySelector('header');
+  if (!hdr) return;
+  const set = () => document.documentElement.style.setProperty('--header-h', hdr.offsetHeight + 'px');
+  set();
+  window.addEventListener('resize', set);
+})();
 
 // Auto-query on load with saved prefs — fetch today's timetable
 // (queryDaily always calls fetchStationBoards() internally)
