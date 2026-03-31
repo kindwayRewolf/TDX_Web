@@ -287,9 +287,13 @@
     font-size: 11px;
     cursor: pointer;
     white-space: nowrap;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
     transition: border-color var(--transition), color var(--transition);
   }
   .stn-toggle-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .stn-toggle-btn:active { border-color: var(--blue); color: var(--blue); background: rgba(77,168,232,.12); }
   .station-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -349,6 +353,7 @@
     .station-win { border-right: none; border-bottom: 1px solid var(--border); }
     .station-win:last-child { border-bottom: none; }
     .stn-table th, .stn-table td { padding: 4px 6px; font-size: 11px; }
+    .stn-toggle-btn { min-height: 32px; padding: 4px 12px; font-size: 12px; }
     .stn-mobile-bar {
       display: flex;
       align-items: center;
@@ -363,10 +368,19 @@
       color: var(--fg);
       border-radius: 6px;
       padding: 4px 20px;
-      font-size: 12px;
+      min-height: 44px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       letter-spacing: .04em;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .stn-board-view-btn:active {
+      border-color: var(--blue);
+      color: var(--blue);
+      background: rgba(77,168,232,.12);
     }
     .stn-win-hidden { display: none !important; }
   }
