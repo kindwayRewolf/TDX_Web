@@ -648,7 +648,7 @@ const _STN_BOARD_VIEW_LABELS = ['🚏 出發', '🏁 到達', '⇄ 兩者', '✖
 let stnBoardView = 0;  // 0=出發only, 1=到達only, 2=both, 3=hidden
 
 function _applyStnBoardView() {
-  const isMobile = window.innerWidth <= 600;
+  const isMobile = window.matchMedia('(max-width: 600px)').matches;
   const winFrom  = document.getElementById('stn-win-from');
   const winTo    = document.getElementById('stn-win-to');
   const outer    = document.querySelector('.station-duo-outer');
