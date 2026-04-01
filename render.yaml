@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: tdx-train-timetable
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: TDX_CLIENT_ID
+        sync: false
+      - key: TDX_CLIENT_SECRET
+        sync: false
+      - key: TDX_CLIENT_ID_1
+        sync: false
+      - key: TDX_CLIENT_SECRET_1
+        sync: false
+      - key: TDX_CLIENT_ID_2
+        sync: false
+      - key: TDX_CLIENT_SECRET_2
+        sync: false

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台鐵時刻表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+</head>
+<body>
+
+<header>
+  <div class="header-container">
+    <div class="header-icon">🚆</div>
+    <div class="header-text">
+      <h1>台鐵時刻表</h1>
+      <p>資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</p>
+    </div>
+  </div>
+  <div class="header-center">
+    <div class="timer-display" id="timer">00:00:00</div>
+    <a class="about-link" href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener">關於本網站技術說明</a>
+  </div>
+  <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
+    <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
+  </a>
+</header>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <label>出發站</label>
+    <div class="station-picker">
+      <select id="from-city-sel" class="city-sel"></select>
+      <select id="from-sel" class="stn-sel"></select>
+    </div>
+  </div>
+
+  <button class="swap-btn" id="swap-btn" title="互換車站">⇄</button>
+
+  <div class="ctrl-group">
+    <label>抵達站</label>
+    <div class="station-picker">
+      <select id="to-city-sel" class="city-sel"></select>
+      <select id="to-sel" class="stn-sel"></select>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <button class="btn btn-primary" id="query-btn">🔍 查詢常態班表</button>
+
+  <div class="sep"></div>
+
+  <div class="ctrl-group" id="date-ctrl">
+    <label id="date-label" style="cursor:pointer">指定日期</label>
+    <input type="date" id="date-input">
+  </div>
+
+  <button class="btn btn-secondary" id="daily-btn">📅 查詢</button>
+
+  <div class="sep"></div>
+
+  <button class="btn btn-live" id="live-btn">🟡 即時狀態</button>
+
+  <button class="ctrl-stn-view-btn" id="stn-board-view-btn" style="display:none" title="切換顯示">🚏</button>
+</div>
+
+<div id="station-live-wrap" style="display:none">
+  <div class="station-duo-outer">
+    <div class="station-win" id="stn-win-from">
+      <div class="stn-win-header">
+        <span class="stn-section-title">🚏 出發站即時</span>
+        <button class="stn-toggle-btn" id="stn-toggle-btn" title="切換顯示順序"></button>
+      </div>
+      <div id="stn-from-wrap"></div>
+    </div>
+    <div class="station-win" id="stn-win-to">
+      <div class="stn-win-header">
+        <span class="stn-section-title">🏁 到達站即時</span>
+      </div>
+      <div id="stn-to-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<div class="filters">
+  <span class="filter-label">顯示車種</span>
+  <label class="chip chip-reserved" id="chip-reserved">
+    <input type="checkbox" checked> 🟡 對號列車
+  </label>
+  <label class="chip chip-local" id="chip-local">
+    <input type="checkbox" checked> 🔵 區間車
+  </label>
+  <label class="chip chip-express" id="chip-express">
+    <input type="checkbox" checked> 🟢 區間快
+  </label>
+</div>
+
+<div id="status-bar">
+  <div class="spinner" id="spinner"></div>
+  <span id="status-text">請選擇車站後按「查詢」</span>
+  <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--fg-dim);flex-shrink:0">
+    顯示筆數
+    <select id="rows-sel" style="height:26px;padding:2px 6px;font-size:11px;min-width:0;width:58px">
+      <option value="5">5</option>
+      <option value="7">7</option>
+      <option value="8" selected>8</option>
+      <option value="9">9</option>
+      <option value="10">10</option>
+      <option value="12">12</option>
+      <option value="15">15</option>
+      <option value="20">20</option>
+      <option value="0">全部</option>
+    </select>
+  </span>
+</div>
+
+<div id="error-banner" class="error-banner"></div>
+
+<div class="tables-wrap">
+  <div class="table-panel" id="panel-ab">
+    <div class="panel-header">
+      <div class="panel-title" id="title-ab">🔵 去程</div>
+      <span class="panel-count" id="count-ab">—</span>
+    </div>
+    <div class="table-scroll" id="scroll-ab">
+      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
+    </div>
+  </div>
+  <div class="table-panel" id="panel-ba">
+    <div class="panel-header">
+      <div class="panel-title" id="title-ba">🟠 回程</div>
+      <span class="panel-count" id="count-ba">—</span>
+    </div>
+    <div class="table-scroll" id="scroll-ba">
+      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span id="source-footer">資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</span>
+  <span>TDX Sample v1.0&nbsp;&nbsp;Copyright &copy; 2026 KevinRewolf</span>
+  <a href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener" style="color:#6a8faa;font-size:11px">關於本網站技術說明</a>
+</footer>
+
+<script>
+const STATIONS = {{ stations | tojson }};
+let CITY_STATIONS = {{ station_groups | tojson }};
+</script>
+<script src="{{ url_for('static', filename='index.js') }}"></script>
+</body>
+</html>

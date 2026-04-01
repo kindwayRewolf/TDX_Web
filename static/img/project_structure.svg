@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 640" font-family="'Noto Sans TC','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#071a2e"/><stop offset="100%" stop-color="#0d2540"/></linearGradient>
+  </defs>
+  <rect width="880" height="640" rx="12" fill="url(#bg)"/>
+  <rect x="1" y="1" width="878" height="638" rx="12" fill="none" stroke="#163556" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="440" y="38" text-anchor="middle" fill="#f5c842" font-size="20" font-weight="700">📁 專案結構 (Project Structure)</text>
+  <line x1="60" y1="54" x2="820" y2="54" stroke="#163556" stroke-width="1"/>
+
+  <!-- Root folder -->
+  <text x="40" y="84" fill="#4da8e8" font-size="16" font-weight="600">TDX_Deploy / Render /</text>
+
+  <!-- ── Main files group ── -->
+  <rect x="40" y="100" width="370" height="260" rx="8" fill="#0a1e33" stroke="#163556"/>
+  <text x="58" y="126" fill="#f5c842" font-size="13" font-weight="600">核心檔案 (Core Files)</text>
+
+  <text x="62" y="158" fill="#56d98a" font-size="14" font-weight="600">app.py</text>
+  <text x="220" y="158" fill="#6a8faa" font-size="12">Flask 後端 (Backend) ~1290 行</text>
+
+  <text x="62" y="188" fill="#c8dff0" font-size="14">requirements.txt</text>
+  <text x="220" y="188" fill="#6a8faa" font-size="12">相依套件 (Dependencies)</text>
+
+  <text x="62" y="218" fill="#c8dff0" font-size="14">render.yaml</text>
+  <text x="220" y="218" fill="#6a8faa" font-size="12">部署設定 (Deploy Config)</text>
+
+  <text x="62" y="256" fill="#fb923c" font-size="14">seed_data.json</text>
+  <text x="220" y="256" fill="#6a8faa" font-size="12">車站種子資料 (Station Seed)</text>
+
+  <text x="62" y="286" fill="#fb923c" font-size="14">timetable_cache.json</text>
+  <text x="220" y="286" fill="#6a8faa" font-size="12">磁碟快取 (Disk Cache)</text>
+
+  <text x="62" y="316" fill="#c8dff0" font-size="14">.env</text>
+  <text x="220" y="316" fill="#6a8faa" font-size="12">環境變數 (Env Variables)</text>
+
+  <text x="62" y="348" fill="#6a8faa" font-size="12">⬇ 子目錄 (Subdirectories)</text>
+
+  <!-- ── templates/ group ── -->
+  <rect x="40" y="370" width="370" height="110" rx="8" fill="#0a1e33" stroke="#163556"/>
+  <text x="58" y="398" fill="#f5c842" font-size="13" font-weight="600">📂 templates/ — 模板 (Templates)</text>
+
+  <text x="72" y="430" fill="#c8dff0" font-size="14">index.html</text>
+  <text x="258" y="430" fill="#6a8faa" font-size="12">主頁模板 (Main Page)</text>
+
+  <text x="72" y="460" fill="#c8dff0" font-size="14">train_detail.html</text>
+  <text x="258" y="460" fill="#6a8faa" font-size="12">列車詳細頁 (Train Detail)</text>
+
+  <!-- ── static/ group ── -->
+  <rect x="440" y="100" width="400" height="380" rx="8" fill="#0a1e33" stroke="#163556"/>
+  <text x="458" y="126" fill="#f5c842" font-size="13" font-weight="600">📂 static/ — 靜態資源 (Static Assets)</text>
+
+  <!-- Main page sub-box -->
+  <rect x="462" y="142" width="358" height="64" rx="6" fill="rgba(77,168,232,.08)" stroke="#163556"/>
+  <text x="478" y="164" fill="#4da8e8" font-size="13" font-weight="500">主頁 (Main Page)</text>
+  <text x="478" y="190" fill="#c8dff0" font-size="13">index.css <tspan fill="#6a8faa">(~600 行)</tspan></text>
+  <text x="660" y="190" fill="#c8dff0" font-size="13">index.js <tspan fill="#6a8faa">(~910 行)</tspan></text>
+
+  <!-- Train detail sub-box -->
+  <rect x="462" y="220" width="358" height="64" rx="6" fill="rgba(251,146,60,.08)" stroke="#163556"/>
+  <text x="478" y="242" fill="#fb923c" font-size="13" font-weight="500">列車詳細頁 (Train Detail Page)</text>
+  <text x="478" y="268" fill="#c8dff0" font-size="13">train_detail.css <tspan fill="#6a8faa">(~400 行)</tspan></text>
+
+  <text x="478" y="296" fill="#c8dff0" font-size="13">train_detail.js <tspan fill="#6a8faa">(~320 行)</tspan></text>
+
+  <!-- Readme page sub-box -->
+  <rect x="462" y="302" width="358" height="42" rx="6" fill="rgba(86,217,138,.08)" stroke="#163556"/>
+  <text x="478" y="330" fill="#56d98a" font-size="13" font-weight="500">說明頁 (About Page)</text>
+  <text x="640" y="330" fill="#c8dff0" font-size="13">readme.html</text>
+
+  <!-- SVG images sub-box -->
+  <rect x="462" y="358" width="358" height="42" rx="6" fill="rgba(245,200,66,.08)" stroke="#163556"/>
+  <text x="478" y="386" fill="#f5c842" font-size="13" font-weight="500">圖表目錄 (Diagrams)</text>
+  <text x="648" y="386" fill="#c8dff0" font-size="13">img/ (SVG)</text>
+
+  <!-- New: fare feature -->
+  <rect x="462" y="414" width="358" height="52" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="478" y="436" fill="#56d98a" font-size="12" font-weight="500">新功能 (New Feature)</text>
+  <text x="478" y="456" fill="#c8dff0" font-size="12">/api/fare — 票價查詢 (Fare Query) · 24h 快取 (Cache)</text>
+
+  <!-- Tech badges -->
+  <rect x="40" y="500" width="800" height="120" rx="8" fill="#0a1e33" stroke="#163556"/>
+  <text x="58" y="526" fill="#f5c842" font-size="14" font-weight="600">🔧 技術棧 (Tech Stack)</text>
+
+  <!-- Row 1 -->
+  <rect x="62"  y="540" width="110" height="30" rx="15" fill="rgba(77,168,232,.15)"/>
+  <text x="117" y="560" text-anchor="middle" fill="#4da8e8" font-size="12" font-weight="500">Python 3.11</text>
+
+  <rect x="186" y="540" width="90" height="30" rx="15" fill="rgba(77,168,232,.15)"/>
+  <text x="231" y="560" text-anchor="middle" fill="#4da8e8" font-size="12" font-weight="500">Flask 3.x</text>
+
+  <rect x="290" y="540" width="100" height="30" rx="15" fill="rgba(86,217,138,.15)"/>
+  <text x="340" y="560" text-anchor="middle" fill="#56d98a" font-size="12" font-weight="500">Gunicorn</text>
+
+  <rect x="404" y="540" width="110" height="30" rx="15" fill="rgba(245,200,66,.15)"/>
+  <text x="459" y="560" text-anchor="middle" fill="#f5c842" font-size="12" font-weight="500">Vanilla JS</text>
+
+  <rect x="528" y="540" width="80" height="30" rx="15" fill="rgba(245,200,66,.15)"/>
+  <text x="568" y="560" text-anchor="middle" fill="#f5c842" font-size="12" font-weight="500">Jinja2</text>
+
+  <rect x="622" y="540" width="80" height="30" rx="15" fill="rgba(245,200,66,.15)"/>
+  <text x="662" y="560" text-anchor="middle" fill="#f5c842" font-size="12" font-weight="500">CSS3</text>
+
+  <rect x="716" y="540" width="110" height="30" rx="15" fill="rgba(251,146,60,.15)"/>
+  <text x="771" y="560" text-anchor="middle" fill="#fb923c" font-size="12" font-weight="500">Render.com</text>
+
+  <!-- Row 2 -->
+  <rect x="62"  y="582" width="130" height="28" rx="14" fill="rgba(86,217,138,.1)"/>
+  <text x="127" y="601" text-anchor="middle" fill="#56d98a" font-size="11" font-weight="500">TDX v2/v3 API</text>
+
+  <rect x="208" y="582" width="100" height="28" rx="14" fill="rgba(86,217,138,.1)"/>
+  <text x="258" y="601" text-anchor="middle" fill="#56d98a" font-size="11" font-weight="500">OAuth2</text>
+
+  <rect x="324" y="582" width="140" height="28" rx="14" fill="rgba(77,168,232,.1)"/>
+  <text x="394" y="601" text-anchor="middle" fill="#4da8e8" font-size="11" font-weight="500">Noto Sans TC</text>
+
+  <rect x="480" y="582" width="150" height="28" rx="14" fill="rgba(77,168,232,.1)"/>
+  <text x="555" y="601" text-anchor="middle" fill="#4da8e8" font-size="11" font-weight="500">JetBrains Mono</text>
+
+  <rect x="646" y="582" width="170" height="28" rx="14" fill="rgba(248,113,113,.1)"/>
+  <text x="731" y="601" text-anchor="middle" fill="#f87171" font-size="11" font-weight="500">多層快取 (Multi-Cache)</text>
+</svg>

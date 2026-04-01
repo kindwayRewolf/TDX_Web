@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 820" font-family="'Noto Sans TC','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#071a2e"/><stop offset="100%" stop-color="#0d2540"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#4da8e8"/></marker>
+    <marker id="arrowGold" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#f5c842"/></marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#56d98a"/></marker>
+  </defs>
+  <rect width="920" height="820" rx="12" fill="url(#bg)"/>
+  <rect x="1" y="1" width="918" height="818" rx="12" fill="none" stroke="#163556"/>
+
+  <!-- Title -->
+  <text x="460" y="38" text-anchor="middle" fill="#f5c842" font-size="20" font-weight="700">📦 快取架構 (Caching Architecture)</text>
+  <line x1="60" y1="54" x2="860" y2="54" stroke="#163556"/>
+
+  <!-- ════ Layer 1: Browser (localStorage) ════ -->
+  <rect x="40" y="74" width="840" height="240" rx="10" fill="#0a1e33" stroke="#4da8e8" stroke-width="1.5"/>
+  <rect x="40" y="74" width="840" height="34" rx="10" fill="rgba(77,168,232,.15)"/>
+  <rect x="40" y="98" width="840" height="10" fill="rgba(77,168,232,.15)"/>
+  <text x="64" y="96" fill="#4da8e8" font-size="15" font-weight="700">🌐  瀏覽器 (Browser) — localStorage</text>
+  <text x="740" y="96" fill="#6a8faa" font-size="11">LRU 驅逐 (Eviction) · 40 key 上限</text>
+
+  <!-- Cache entry row 1 -->
+  <rect x="65" y="122" width="240" height="56" rx="6" fill="rgba(77,168,232,.06)" stroke="#163556"/>
+  <text x="82" y="144" fill="#56d98a" font-size="12" font-weight="600">tdx_od_{from}_{to}</text>
+  <text x="82" y="166" fill="#6a8faa" font-size="11">存活時間 (TTL): 30 分鐘</text>
+
+  <rect x="325" y="122" width="240" height="56" rx="6" fill="rgba(77,168,232,.06)" stroke="#163556"/>
+  <text x="342" y="144" fill="#56d98a" font-size="12" font-weight="600">tdx_daily_{…}_{date}</text>
+  <text x="342" y="166" fill="#6a8faa" font-size="11">存活時間 (TTL): 7 天</text>
+
+  <rect x="585" y="122" width="275" height="56" rx="6" fill="rgba(77,168,232,.06)" stroke="#163556"/>
+  <text x="602" y="144" fill="#56d98a" font-size="12" font-weight="600">tra_station_groups_v2</text>
+  <text x="602" y="166" fill="#6a8faa" font-size="11">存活時間 (TTL): 30 天</text>
+
+  <!-- Cache entry row 2 -->
+  <rect x="65" y="192" width="190" height="56" rx="6" fill="rgba(77,168,232,.06)" stroke="#163556"/>
+  <text x="82" y="214" fill="#56d98a" font-size="12" font-weight="600">tdx_detail_alert</text>
+  <text x="82" y="236" fill="#6a8faa" font-size="11">存活時間 (TTL): 15 分鐘</text>
+
+  <rect x="275" y="192" width="190" height="56" rx="6" fill="rgba(77,168,232,.06)" stroke="#163556"/>
+  <text x="292" y="214" fill="#56d98a" font-size="12" font-weight="600">tdx_detail_news</text>
+  <text x="292" y="236" fill="#6a8faa" font-size="11">存活時間 (TTL): 15 分鐘</text>
+
+  <rect x="485" y="192" width="150" height="56" rx="6" fill="rgba(245,200,66,.06)" stroke="#163556"/>
+  <text x="502" y="214" fill="#f5c842" font-size="12" font-weight="600">tdx_prefs</text>
+  <text x="502" y="236" fill="#6a8faa" font-size="11">永久 (Permanent)</text>
+
+  <rect x="655" y="192" width="205" height="56" rx="6" fill="rgba(245,200,66,.06)" stroke="#163556"/>
+  <text x="672" y="214" fill="#f5c842" font-size="12" font-weight="600">tdx_stn_mode · cache_ver</text>
+  <text x="672" y="236" fill="#6a8faa" font-size="11">永久 (Permanent)</text>
+
+  <!-- Arrow: cache miss -->
+  <line x1="460" y1="320" x2="460" y2="360" stroke="#f87171" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="374" y="324" width="172" height="24" rx="4" fill="rgba(248,113,113,.12)" stroke="none"/>
+  <text x="460" y="342" text-anchor="middle" fill="#f87171" font-size="12" font-weight="600">快取未命中 (Cache Miss) ▼</text>
+
+  <!-- ════ Layer 2: Flask (in-memory) ════ -->
+  <rect x="40" y="370" width="840" height="230" rx="10" fill="#0a1e33" stroke="#56d98a" stroke-width="1.5"/>
+  <rect x="40" y="370" width="840" height="34" rx="10" fill="rgba(86,217,138,.15)"/>
+  <rect x="40" y="394" width="840" height="10" fill="rgba(86,217,138,.15)"/>
+  <text x="64" y="392" fill="#56d98a" font-size="15" font-weight="700">⚡  伺服器 (Flask Server) — 記憶體字典 (In-Memory Dicts)</text>
+  <text x="740" y="392" fill="#6a8faa" font-size="11">執行緒安全 (Thread-Safe) 🔒</text>
+
+  <!-- Server caches row 1 -->
+  <rect x="65" y="418" width="190" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="82" y="440" fill="#c8dff0" font-size="12" font-weight="600">_timetable_cache</text>
+  <text x="82" y="462" fill="#56d98a" font-size="12" font-weight="700">12 小時 (12 Hours)</text>
+
+  <rect x="275" y="418" width="170" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="292" y="440" fill="#c8dff0" font-size="12" font-weight="600">_daily_cache</text>
+  <text x="292" y="462" fill="#56d98a" font-size="12" font-weight="700">7 天 (7 Days)</text>
+
+  <rect x="465" y="418" width="170" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="482" y="440" fill="#c8dff0" font-size="12" font-weight="600">_od_cache</text>
+  <text x="482" y="462" fill="#56d98a" font-size="12" font-weight="700">30 分鐘 (30 Min)</text>
+
+  <rect x="655" y="418" width="210" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="672" y="440" fill="#c8dff0" font-size="12" font-weight="600">_liveboard_cache</text>
+  <text x="672" y="462" fill="#56d98a" font-size="12" font-weight="700">120 秒 (120 Seconds)</text>
+
+  <!-- Server caches row 2 -->
+  <rect x="65" y="488" width="190" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="82" y="510" fill="#c8dff0" font-size="12" font-weight="600">_trainlive_cache</text>
+  <text x="82" y="532" fill="#56d98a" font-size="12" font-weight="700">120 秒 (120 Seconds)</text>
+
+  <rect x="275" y="488" width="170" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="292" y="510" fill="#c8dff0" font-size="12" font-weight="600">_alert_cache</text>
+  <text x="292" y="532" fill="#56d98a" font-size="12" font-weight="700">15 分鐘 (15 Min)</text>
+
+  <rect x="465" y="488" width="170" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="482" y="510" fill="#c8dff0" font-size="12" font-weight="600">_news_cache</text>
+  <text x="482" y="532" fill="#56d98a" font-size="12" font-weight="700">1 小時 (1 Hour)</text>
+
+  <rect x="655" y="488" width="210" height="56" rx="6" fill="rgba(86,217,138,.06)" stroke="#163556"/>
+  <text x="672" y="510" fill="#c8dff0" font-size="12" font-weight="600">_fare_cache</text>
+  <text x="672" y="532" fill="#56d98a" font-size="12" font-weight="700">24 小時 (24 Hours)</text>
+
+  <!-- Arrows: cache miss + startup load -->
+  <line x1="300" y1="606" x2="300" y2="646" stroke="#f87171" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="300" y="636" text-anchor="middle" fill="#f87171" font-size="12" font-weight="600">快取未命中 (Miss) ▼</text>
+
+  <line x1="620" y1="646" x2="620" y2="606" stroke="#fb923c" stroke-width="2" marker-end="url(#arrowGold)"/>
+  <text x="620" y="636" text-anchor="middle" fill="#fb923c" font-size="12" font-weight="600">▲ 啟動載入 (Startup Load)</text>
+
+  <!-- ════ Layer 3: External sources ════ -->
+  <!-- TDX API box -->
+  <rect x="40" y="658" width="430" height="140" rx="10" fill="#0a1e33" stroke="#f5c842" stroke-width="1.5"/>
+  <rect x="40" y="658" width="430" height="34" rx="10" fill="rgba(245,200,66,.15)"/>
+  <rect x="40" y="682" width="430" height="10" fill="rgba(245,200,66,.15)"/>
+  <text x="64" y="680" fill="#f5c842" font-size="15" font-weight="700">🌍  TDX API 外部資料來源 (External Data)</text>
+
+  <text x="72" y="716" fill="#c8dff0" font-size="12">• OAuth2 客戶端憑證認證 (Client Credentials)</text>
+  <text x="72" y="742" fill="#c8dff0" font-size="12">• 金鑰池輪替 (Key Pool Round-Robin)</text>
+  <text x="72" y="768" fill="#c8dff0" font-size="12">• 滑動視窗速率限制 (Sliding Window Rate Limit): 5 req / 60s</text>
+  <text x="72" y="788" fill="#c8dff0" font-size="12">• 429 → 冷卻 60秒 (Cooldown) · 401 → 刷新令牌 (Refresh Token)</text>
+
+  <!-- Disk JSON box -->
+  <rect x="500" y="658" width="380" height="140" rx="10" fill="#0a1e33" stroke="#fb923c" stroke-width="1.5"/>
+  <rect x="500" y="658" width="380" height="34" rx="10" fill="rgba(251,146,60,.15)"/>
+  <rect x="500" y="682" width="380" height="10" fill="rgba(251,146,60,.15)"/>
+  <text x="524" y="680" fill="#fb923c" font-size="15" font-weight="700">💾  磁碟 JSON 檔案 (Disk JSON Files)</text>
+
+  <rect x="525" y="706" width="330" height="36" rx="6" fill="rgba(251,146,60,.06)" stroke="#163556"/>
+  <text x="542" y="730" fill="#c8dff0" font-size="13">seed_data.json</text>
+  <text x="720" y="730" fill="#6a8faa" font-size="11">車站資料 (Station Data)</text>
+
+  <rect x="525" y="752" width="330" height="36" rx="6" fill="rgba(251,146,60,.06)" stroke="#163556"/>
+  <text x="542" y="776" fill="#c8dff0" font-size="13">timetable_cache.json</text>
+  <text x="720" y="776" fill="#6a8faa" font-size="11">時刻表快取 (Timetable)</text>
+</svg>

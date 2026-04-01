@@ -1,0 +1,17 @@
+#
+# Generic project ignores
+#
+/.git/
+
+**/build/
+**/dist/
+**/__pycache__/
+**/.venu/
+**/Conf/
+**/Binary/
+**/Backup/
+
+**/*.log
+**/*.ini
+**/*.spec
+**/.env

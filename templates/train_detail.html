@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台鐵 — 列車 {{ train_no }}</title>
+<!-- Detect mobile BEFORE first paint to avoid layout flash -->
+<script>
+  (function(){
+    var m = window.innerWidth < 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    document.documentElement.classList.add(m ? 'is-mobile' : 'is-desktop');
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='train_detail.css') }}">
+</head>
+<body>
+
+<header>
+  <button class="back-btn" onclick="history.length>1?history.back():location.href='/'">← 返回</button>
+  <span class="header-train-no">🚆 {{ train_no }}</span>
+  <span id="header-type"></span>
+  <span class="header-route" id="header-route">載入中…</span>
+  <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
+    <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
+  </a>
+</header>
+
+<!-- ── Alert / News ─────────────────────────────────────────────────────── -->
+<div class="section" id="alert-section">
+  <div class="section-title" id="alert-title" onclick="toggleSection('alert')">📢 通阻通知</div>
+  <div class="collapsible-body" id="alert-body">
+    <div id="alert-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  </div>
+</div>
+
+<div class="section" id="news-section">
+  <div class="section-title" id="news-title" onclick="toggleSection('news')">📰 最新消息</div>
+  <div class="collapsible-body" id="news-body">
+    <div id="news-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+  </div>
+</div>
+
+<!-- ── Train stop list ──────────────────────────────────────────────────── -->
+<div class="section" id="train-section">
+  <div class="section-title">� 即將停靠站 <span id="live-status-chip"></span></div>
+  <div class="train-meta" id="train-meta"></div>
+  <div id="error-box" class="error-box"></div>
+  <div id="train-content"><div class="loading-box"><div class="spinner"></div>載入中…</div></div>
+</div>
+
+<footer>
+  <span id="page-footer">資料介接「<a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener">交通部TDX平臺</a>」&amp; 平臺標章</span>
+  <span>TDX Sample v1.0&nbsp;&nbsp;Copyright &copy; 2026 KevinRewolf</span>
+  <a href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener" style="color:#6a8faa;font-size:11px">關於本網站技術說明</a>
+</footer>
+
+<script>
+const TRAIN_NO = "{{ train_no }}";
+</script>
+<script src="{{ url_for('static', filename='train_detail.js') }}"></script>
+</body>
+</html>
