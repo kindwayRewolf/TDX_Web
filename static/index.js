@@ -644,46 +644,46 @@ let stnMode = (() => {
 
 const _lastBoards = { from: null, to: null };
 
-const _STN_BOARD_VIEW_LABELS = ['🚏 出發', '🏁 到達', '⇄ 兩者', '✖️ 關閉'];
+const _STN_BOARD_VIEW_LABELS = ['🚏', '🏁', '⇄', '✖️'];
 let stnBoardView = 0;  // 0=出發only, 1=到達only, 2=both, 3=hidden
 
 function _applyStnBoardView() {
-  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  const isMobile = window.innerWidth <= 600;
   const winFrom  = document.getElementById('stn-win-from');
   const winTo    = document.getElementById('stn-win-to');
   const outer    = document.querySelector('.station-duo-outer');
   const btn      = document.getElementById('stn-board-view-btn');
+  const wrap     = document.getElementById('station-live-wrap');
   if (!winFrom || !winTo) return;
+  const isMedium = window.innerWidth <= 768;
   if (!isMobile) {
     winFrom.classList.remove('stn-win-hidden');
     winTo.classList.remove('stn-win-hidden');
     if (outer) outer.style.display = '';
+    if (btn) btn.style.display = isMedium && wrap && wrap.style.display === 'block' ? 'inline-flex' : 'none';
     return;
   }
   const hidden = stnBoardView === 3;
   if (outer) outer.style.display = hidden ? 'none' : '';
   winFrom.classList.toggle('stn-win-hidden', stnBoardView === 1);
   winTo.classList.toggle('stn-win-hidden',   stnBoardView === 0);
-  if (btn) btn.textContent = _STN_BOARD_VIEW_LABELS[stnBoardView];
+  if (btn) {
+    btn.style.display = (wrap && wrap.style.display === 'block') ? 'inline-flex' : 'none';
+    btn.textContent = _STN_BOARD_VIEW_LABELS[stnBoardView];
+  }
 }
 
-// Use event delegation on document so handlers fire reliably on mobile
-// even though station-live-wrap starts as display:none.
-document.addEventListener('click', e => {
-  const toggleBtn = e.target.closest('#stn-toggle-btn');
-  if (toggleBtn) {
-    stnMode = (stnMode + 1) % 4;
-    localStorage.setItem('tdx_stn_mode', stnMode);
-    toggleBtn.textContent = STN_MODE_LABELS[stnMode];
-    if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
-    if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
-    return;
-  }
-  const viewBtn = e.target.closest('#stn-board-view-btn');
-  if (viewBtn) {
-    stnBoardView = (stnBoardView + 1) % 4;
-    _applyStnBoardView();
-  }
+document.getElementById('stn-toggle-btn').addEventListener('click', () => {
+  stnMode = (stnMode + 1) % 4;
+  localStorage.setItem('tdx_stn_mode', stnMode);
+  document.getElementById('stn-toggle-btn').textContent = STN_MODE_LABELS[stnMode];
+  if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
+  if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
+});
+
+document.getElementById('stn-board-view-btn').addEventListener('click', () => {
+  stnBoardView = (stnBoardView + 1) % 4;
+  _applyStnBoardView();
 });
 window.addEventListener('resize', _applyStnBoardView);
 
@@ -790,6 +790,10 @@ async function fetchStationBoards() {
   const toName   = STATION_MAP.get(toCode)?.name   || toCode;
 
   document.getElementById('station-live-wrap').style.display = 'block';
+  if (window.innerWidth <= 768) {
+    const viewBtn = document.getElementById('stn-board-view-btn');
+    if (viewBtn) viewBtn.style.display = 'inline-flex';
+  }
   // Show placeholders while loading
   document.getElementById('stn-from-wrap').innerHTML =
     `<div class="station-card"><div class="station-card-header"><span class="stn-label stn-label-from">出發</span>${escHtml(fromName)}</div><div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">載入中…</div></div>`;
@@ -872,13 +876,13 @@ async function fetchLive() {
     const fetched = Math.max(d1.fetched_at || 0, d2.fetched_at || 0);
     const t  = new Date(fetched * 1000);
     const hm = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
-    btn.textContent = `🟢 即時 ${hm}`;
+    btn.textContent = window.innerWidth <= 768 ? '🟢' : `🟢 即時 ${hm}`;
     overlayDelays(document.getElementById('scroll-ab'));
     overlayDelays(document.getElementById('scroll-ba'));
   } catch (e) {
     btn.classList.remove('live-loading');
     btn.classList.remove('live-on');
-    btn.textContent = '🟡 即時狀態';
+    btn.textContent = window.innerWidth <= 768 ? '🟡' : '🟡 即時狀態';
     showError(`即時狀態無法取得：${e.message}`);
   } finally {
     btn.disabled = false;
@@ -893,6 +897,14 @@ document.getElementById('date-label').addEventListener('click', () => {
   document.getElementById('date-input').value = `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
 });
 document.getElementById('live-btn').addEventListener('click', fetchLive);
+window.addEventListener('resize', () => {
+  const btn = document.getElementById('live-btn');
+  if (btn.classList.contains('live-on')) {
+    btn.textContent = window.innerWidth <= 768 ? '🟢' : btn.textContent.length <= 2 ? '🟢 即時' : btn.textContent;
+  } else if (!btn.classList.contains('live-loading')) {
+    btn.textContent = window.innerWidth <= 768 ? '🟡' : '🟡 即時狀態';
+  }
+});
 let _queryDebounce = null;
 function _debouncedQuery() {
   clearTimeout(_queryDebounce);
@@ -914,18 +926,9 @@ function updateTimer() {
 updateTimer();
 setInterval(updateTimer, 1000);
 
-// Measure sticky header height so mobile bar pins just below it
-(function() {
-  const hdr = document.querySelector('header');
-  if (!hdr) return;
-  const set = () => document.documentElement.style.setProperty('--header-h', hdr.offsetHeight + 'px');
-  set();
-  window.addEventListener('resize', set);
-})();
-
 // Auto-query on load with saved prefs — fetch today's timetable
 // (queryDaily always calls fetchStationBoards() internally)
 queryDaily();
 
 // Warm-up ping on page load to wake Render free-tier from cold start.
-//fetch("/health").catch(() => {});
+fetch("/health").catch(() => {});

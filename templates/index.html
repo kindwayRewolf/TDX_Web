@@ -6,7 +6,7 @@
 <title>台鐵時刻表</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}?v={{ cache_ver }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
 </head>
 <body>
 
@@ -52,22 +52,21 @@
 
   <div class="sep"></div>
 
-  <div class="ctrl-group">
+  <div class="ctrl-group" id="date-ctrl">
     <label id="date-label" style="cursor:pointer">指定日期</label>
     <input type="date" id="date-input">
   </div>
 
-  <button class="btn btn-secondary" id="daily-btn">📅 查詢當日班次</button>
+  <button class="btn btn-secondary" id="daily-btn">📅 查詢</button>
 
   <div class="sep"></div>
 
   <button class="btn btn-live" id="live-btn">🟡 即時狀態</button>
+
+  <button class="ctrl-stn-view-btn" id="stn-board-view-btn" style="display:none" title="切換顯示">🚏</button>
 </div>
 
 <div id="station-live-wrap" style="display:none">
-  <div class="stn-mobile-bar">
-    <button class="stn-board-view-btn" id="stn-board-view-btn">🚏 出發</button>
-  </div>
   <div class="station-duo-outer">
     <div class="station-win" id="stn-win-from">
       <div class="stn-win-header">
@@ -150,11 +149,6 @@
 const STATIONS = {{ stations | tojson }};
 let CITY_STATIONS = {{ station_groups | tojson }};
 </script>
-<script src="{{ url_for('static', filename='index.js') }}?v={{ cache_ver }}"></script>
-<script>
-// Warm-up ping on page load to wake Render free-tier from cold start.
-fetch("/health").catch(() => {});
-</script>
-
+<script src="{{ url_for('static', filename='index.js') }}"></script>
 </body>
 </html>
