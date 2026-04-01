@@ -399,7 +399,7 @@
     select { min-width: 0; flex: 1; }
     .ctrl-group { flex: 1; }
     #date-ctrl { flex: 0 0 auto; }
-    #date-ctrl input[type="date"] { width: 108px; }
+    #date-ctrl input[type="date"] { width: 140px; }
     .station-picker { flex-wrap: nowrap; }
     .station-picker .city-sel { min-width: 80px; flex: 0 0 auto; }
     .station-picker .stn-sel  { flex: 1; min-width: 0; }
