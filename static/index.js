@@ -648,19 +648,18 @@ const _STN_BOARD_VIEW_LABELS = ['🚏', '🏁', '⇄', '✖️'];
 let stnBoardView = 0;  // 0=出發only, 1=到達only, 2=both, 3=hidden
 
 function _applyStnBoardView() {
-  const isMobile = window.innerWidth <= 600;
+  const isMobile = window.innerWidth <= 768;
   const winFrom  = document.getElementById('stn-win-from');
   const winTo    = document.getElementById('stn-win-to');
   const outer    = document.querySelector('.station-duo-outer');
   const btn      = document.getElementById('stn-board-view-btn');
   const wrap     = document.getElementById('station-live-wrap');
   if (!winFrom || !winTo) return;
-  const isMedium = window.innerWidth <= 768;
   if (!isMobile) {
     winFrom.classList.remove('stn-win-hidden');
     winTo.classList.remove('stn-win-hidden');
     if (outer) outer.style.display = '';
-    if (btn) btn.style.display = isMedium && wrap && wrap.style.display === 'block' ? 'inline-flex' : 'none';
+    if (btn) btn.style.display = 'none';
     return;
   }
   const hidden = stnBoardView === 3;

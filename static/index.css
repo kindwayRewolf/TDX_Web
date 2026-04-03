@@ -345,9 +345,6 @@
   .stn-delay-ok  { color: var(--green); font-weight: 600; }
   .stn-win-hidden { display: none !important; }
   @media (max-width: 600px) {
-    .station-duo-outer { grid-template-columns: 1fr; }
-    .station-win { border-right: none; border-bottom: 1px solid var(--border); }
-    .station-win:last-child { border-bottom: none; }
     .stn-table th, .stn-table td { padding: 4px 6px; font-size: 11px; }
   }
   .chip.off { opacity: .38; filter: grayscale(.8); }
@@ -431,6 +428,9 @@
     #status-bar { font-size: 12px; padding: 6px 12px; }
 
     .tables-wrap { grid-template-columns: 1fr; }
+    .station-duo-outer { grid-template-columns: 1fr; }
+    .station-win { border-right: none; border-bottom: 1px solid var(--border); }
+    .station-win:last-child { border-bottom: none; }
 
     .panel-header { padding: 6px 12px; }
     .panel-title { font-size: 13px; }
