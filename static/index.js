@@ -648,7 +648,7 @@ const _STN_BOARD_VIEW_LABELS = ['🚏', '🏁', '⇄', '✖️'];
 let stnBoardView = 0;  // 0=出發only, 1=到達only, 2=both, 3=hidden
 
 function _applyStnBoardView() {
-  const isMobile = window.innerWidth <= 768;
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
   const winFrom  = document.getElementById('stn-win-from');
   const winTo    = document.getElementById('stn-win-to');
   const outer    = document.querySelector('.station-duo-outer');
@@ -789,7 +789,7 @@ async function fetchStationBoards() {
   const toName   = STATION_MAP.get(toCode)?.name   || toCode;
 
   document.getElementById('station-live-wrap').style.display = 'block';
-  if (window.innerWidth <= 768) {
+  if (window.matchMedia('(max-width: 768px)').matches) {
     const viewBtn = document.getElementById('stn-board-view-btn');
     if (viewBtn) viewBtn.style.display = 'inline-flex';
   }
