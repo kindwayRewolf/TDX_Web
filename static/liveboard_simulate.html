@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📱 即時看板切換模擬器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="index.css">
+<style>
+  /* ── Simulator chrome (outside phone frame) ─────────────────────────── */
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 48px;
+    background: #02080f;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .sim-page-title {
+    color: var(--gold);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+
+  .sim-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    width: 100%;
+    max-width: 900px;
+  }
+  .sim-toolbar-label {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-right: 4px;
+  }
+  .sim-device-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    border-radius: 5px;
+    padding: 5px 13px;
+    font-size: 12px;
+    font-family: var(--font-main);
+    cursor: pointer;
+    transition: border-color .18s, color .18s;
+  }
+  .sim-device-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .sim-device-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(77,168,232,.1); }
+
+  .sim-w-badge {
+    margin-left: auto;
+    color: var(--blue);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* ── Phone frame ──────────────────────────────────────────────────────── */
+  .sim-outer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .sim-frame-wrap {
+    position: relative;
+    border: 3px solid #2a4a6a;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    background: var(--bg);
+    transition: width 0.25s ease;
+    max-width: 100%;
+    /* This is the key: the frame itself is narrow, so CSS inside
+       must adapt to the frame width. We use contain-intrinsic-size + container queries
+       workaround via JS for the media queries that use window.innerWidth. */
+  }
+  .sim-frame-inner {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 80vh;
+  }
+
+  /* ── Debug state panel ───────────────────────────────────────────────── */
+  .sim-debug {
+    width: 100%;
+    max-width: 900px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--fg-dim);
+    margin-top: 6px;
+  }
+  .sim-debug span { color: var(--blue); font-weight: 600; }
+  .sim-hint {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-align: center;
+    margin-top: 4px;
+    letter-spacing: .03em;
+  }
+
+  /* ── Override: stn-win-hidden must work at ALL widths in the sim ─────── */
+  /* In the real index.css it's locked inside @media (max-width:600px). */
+  /* For the simulator we need it always-on so our JS override works.  */
+  .stn-win-hidden { display: none !important; }
+
+  /* ── Force single-column grid in the sim frame when mobile sim ───────── */
+  .sim-mobile-layout .station-duo-outer { grid-template-columns: 1fr !important; }
+  .sim-mobile-layout .station-win { border-right: none; border-bottom: 1px solid var(--border); }
+  .sim-mobile-layout .station-win:last-child { border-bottom: none; }
+
+  /* ── Apply medium-width controls tweaks inside the sim frame ─────────── */
+  .sim-medium-layout .controls { padding: 10px 12px; gap: 8px; }
+  .sim-medium-layout .btn { padding: 0 12px; font-size: 12px; }
+  .sim-medium-layout #live-btn-sim { padding: 0 10px; min-width: 36px; }
+  .sim-medium-layout .ctrl-stn-view-btn {
+    height: 36px; padding: 0 8px; align-self: flex-end;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--fg); border-radius: var(--radius);
+    font-size: 16px; cursor: pointer;
+    transition: border-color .18s, color .18s;
+    display: inline-flex; align-items: center;
+  }
+  .sim-medium-layout .ctrl-stn-view-btn:hover { border-color: var(--blue); color: var(--blue); }
+</style>
+</head>
+<body>
+
+<div class="sim-page-title">📱 即時看板切換按鈕模擬器</div>
+
+<!-- ── Toolbar ── -->
+<div class="sim-toolbar">
+  <span class="sim-toolbar-label">模擬裝置寬度</span>
+  <button class="sim-device-btn active" onclick="setSimWidth(375)" data-w="375">📱 iPhone SE (375px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(390)" data-w="390">📱 iPhone 15 (390px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(430)" data-w="430">📱 Pro Max (430px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(540)" data-w="540">📟 小平板 (540px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(600)" data-w="600">⚠️ 邊界 (600px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(610)" data-w="610">🖥️ 超出邊界 (610px)</button>
+  <button class="sim-device-btn" onclick="setSimWidth(768)" data-w="768">🗔 iPad (768px)</button>
+  <span class="sim-w-badge" id="sim-w-badge">simWidth = 375px</span>
+</div>
+
+<div class="sim-outer">
+  <!-- ── Phone frame ── -->
+  <div class="sim-frame-wrap" id="sim-frame" style="width:375px">
+    <div class="sim-frame-inner" id="sim-frame-inner">
+
+      <!-- Controls bar (mock) -->
+      <div class="controls" id="sim-controls">
+        <div class="ctrl-group" style="flex:1">
+          <label>出發站</label>
+          <div class="station-picker">
+            <select class="city-sel" disabled style="min-width:70px;flex:0 0 auto"><option>台北</option></select>
+            <select class="stn-sel" disabled style="flex:1;min-width:0"><option>台北</option></select>
+          </div>
+        </div>
+
+        <button class="swap-btn" disabled>⇄</button>
+
+        <div class="ctrl-group" style="flex:1">
+          <label>抵達站</label>
+          <div class="station-picker">
+            <select class="city-sel" disabled style="min-width:70px;flex:0 0 auto"><option>高雄</option></select>
+            <select class="stn-sel" disabled style="flex:1;min-width:0"><option>高雄</option></select>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <button class="btn btn-live live-on" id="live-btn-sim" disabled>🟢 即時狀態</button>
+
+        <!-- The toggle button under test -->
+        <button class="ctrl-stn-view-btn" id="stn-board-view-btn"
+                title="切換顯示 (stn-board-view-btn)"
+                style="display:none">🚏</button>
+      </div>
+
+      <!-- ── Station live boards ── -->
+      <div id="station-live-wrap" style="display:block">
+        <div class="station-duo-outer">
+
+          <div class="station-win" id="stn-win-from">
+            <div class="stn-win-header">
+              <span class="stn-section-title">🚏 出發站即時</span>
+              <button class="stn-toggle-btn" id="stn-toggle-btn"
+                      title="切換車次/車種顯示順序">車次｜車種</button>
+            </div>
+            <div id="stn-from-wrap"></div>
+          </div>
+
+          <div class="station-win" id="stn-win-to">
+            <div class="stn-win-header">
+              <span class="stn-section-title">🏁 到達站即時</span>
+            </div>
+            <div id="stn-to-wrap"></div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /sim-frame-inner -->
+  </div><!-- /sim-frame-wrap -->
+
+  <div class="sim-hint">↕ 捲動看板內容可看到完整資料　— 點擊頂部按鈕切換裝置寬度</div>
+
+  <!-- ── Debug panel ── -->
+  <div class="sim-debug">
+    <b style="color:var(--fg)">狀態</b> &nbsp;
+    stnBoardView = <span id="dbg-view">0</span> &nbsp;・&nbsp;
+    label = <span id="dbg-label">🚏</span> &nbsp;・&nbsp;
+    stnMode = <span id="dbg-mode">0</span> &nbsp;・&nbsp;
+    isMobile = <span id="dbg-mobile">true</span> &nbsp;・&nbsp;
+    #stn-win-from hidden = <span id="dbg-from-hidden">false</span> &nbsp;・&nbsp;
+    #stn-win-to hidden = <span id="dbg-to-hidden">true</span>
+  </div>
+</div><!-- /sim-outer -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  SIMULATOR BOOTSTRAP
+//  We override window.innerWidth so that _applyStnBoardView (and any other
+//  logic that checks window.innerWidth) uses our simulated value instead of
+//  the real desktop browser width.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _simWidth = 375;
+
+Object.defineProperty(window, 'innerWidth', {
+  get() { return _simWidth; },
+  configurable: true,
+});
+
+// ── Mock board data ────────────────────────────────────────────────────────
+const MOCK_FROM_BOARDS = [
+  { train_no: '108',  train_type: '自強號',  dest: '基隆', departure: '14:02', delay: 0, direction: 0 },
+  { train_no: '204',  train_type: '區間車',  dest: '八堵', departure: '14:07', delay: 3, direction: 0 },
+  { train_no: '1226', train_type: '區間快',  dest: '松山', departure: '14:11', delay: 0, direction: 0 },
+  { train_no: '107',  train_type: '太魯閣',  dest: '高雄', departure: '14:15', delay: 0, direction: 1 },
+  { train_no: '123',  train_type: '普悠瑪',  dest: '花蓮', departure: '14:20', delay: 5, direction: 1 },
+  { train_no: '206',  train_type: '區間車',  dest: '桃園', departure: '14:25', delay: 0, direction: 1 },
+];
+
+const MOCK_TO_BOARDS = [
+  { train_no: '111',  train_type: '太魯閣',  dest: '高雄', departure: '14:04', delay: 0, direction: 1 },
+  { train_no: '207',  train_type: '區間車',  dest: '左營', departure: '14:09', delay: 2, direction: 1 },
+  { train_no: '1228', train_type: '區間快',  dest: '鳳山', departure: '14:17', delay: 0, direction: 1 },
+  { train_no: '209',  train_type: '區間車',  dest: '岡山', departure: '14:28', delay: 1, direction: 1 },
+  { train_no: '112',  train_type: '太魯閣',  dest: '基隆', arrival:  '14:22', departure: '14:23', delay: 0, direction: 0 },
+  { train_no: '214',  train_type: '區間車',  dest: '七堵', departure: '14:35', delay: 0, direction: 0 },
+];
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── stnMode (display format toggle) ───────────────────────────────────────
+const STN_MODE_LABELS = ['車次｜車種', '車種｜車次', '車次車種', '車種車次'];
+let stnMode = 0;
+
+document.getElementById('stn-toggle-btn').addEventListener('click', () => {
+  stnMode = (stnMode + 1) % 4;
+  document.getElementById('stn-toggle-btn').textContent = STN_MODE_LABELS[stnMode];
+  renderAll();
+  updateDebug();
+});
+
+// ── stnBoardView (the button under test) ──────────────────────────────────
+const _STN_BOARD_VIEW_LABELS = ['🚏', '🏁', '⇄', '✖️'];
+let stnBoardView = 0;
+
+function _applyStnBoardView() {
+  const isMobile = _simWidth <= 600;  // uses sim width, NOT real window width
+  const isMedium = _simWidth <= 768;
+  const winFrom  = document.getElementById('stn-win-from');
+  const winTo    = document.getElementById('stn-win-to');
+  const outer    = document.querySelector('.station-duo-outer');
+  const btn      = document.getElementById('stn-board-view-btn');
+  const wrap     = document.getElementById('station-live-wrap');
+  const inner    = document.getElementById('sim-frame-inner');
+  if (!winFrom || !winTo) return;
+
+  // Apply layout helper classes to the frame inner div (since media queries
+  // use real window.innerWidth, we manually toggle responsive classes here)
+  if (inner) {
+    inner.classList.toggle('sim-mobile-layout', isMobile);
+    inner.classList.toggle('sim-medium-layout', isMedium);
+  }
+
+  if (!isMobile) {
+    winFrom.classList.remove('stn-win-hidden');
+    winTo.classList.remove('stn-win-hidden');
+    if (outer) outer.style.display = '';
+    // On medium (<=768 but >600): show the view button
+    if (btn) btn.style.display = isMedium ? 'inline-flex' : 'none';
+    return;
+  }
+
+  // Mobile path
+  const hidden = stnBoardView === 3;
+  if (outer) outer.style.display = hidden ? 'none' : '';
+  winFrom.classList.toggle('stn-win-hidden', stnBoardView === 1);
+  winTo.classList.toggle('stn-win-hidden',   stnBoardView === 0);
+  if (btn) {
+    btn.style.display = 'inline-flex';
+    btn.textContent = _STN_BOARD_VIEW_LABELS[stnBoardView];
+  }
+}
+
+document.getElementById('stn-board-view-btn').addEventListener('click', () => {
+  stnBoardView = (stnBoardView + 1) % 4;
+  _applyStnBoardView();
+  updateDebug();
+});
+
+// ── Render helpers (mirrors index.js) ─────────────────────────────────────
+function _sliceBoards(list, timeOf, hhmm) {
+  const sorted = [...list].sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
+  let idx = sorted.findIndex(t => timeOf(t) >= hhmm);
+  if (idx < 0) idx = Math.max(0, sorted.length - 3);
+  return sorted.slice(idx, idx + 6);
+}
+
+function _makeRows(slice, timeOf) {
+  return slice.map(t => {
+    const sched   = (timeOf(t) || '—').slice(0, 5);
+    const delayEl = t.delay > 0
+      ? `<span class="stn-delay-pos">+${t.delay}分</span>`
+      : `<span class="stn-delay-ok">準點</span>`;
+    const noSpan   = `<span style="font-family:var(--font-mono)">${escHtml(t.train_no)}</span>`;
+    const typeSpan = `<span style="color:var(--fg-dim)">${escHtml(t.train_type)}</span>`;
+    let col1;
+    if (stnMode >= 2) {
+      const inner = stnMode === 2
+        ? `${noSpan} ${typeSpan}`
+        : `${typeSpan} ${noSpan}`;
+      col1 = `<td>${inner}</td>`;
+    } else {
+      col1 = stnMode === 1
+        ? `<td>${typeSpan}</td><td>${noSpan}</td>`
+        : `<td>${noSpan}</td><td>${typeSpan}</td>`;
+    }
+    return `<tr>
+      ${col1}
+      <td style="color:var(--fg-dim)">${escHtml(t.dest)}</td>
+      <td style="font-family:var(--font-mono);text-align:right">${escHtml(sched)}</td>
+      <td style="text-align:right">${delayEl}</td>
+    </tr>`;
+  }).join('');
+}
+
+function _dirRow(label, cls) {
+  return `<tr class="stn-dir-row ${cls}"><td colspan="6">${label}</td></tr>`;
+}
+
+function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  const isArr  = (labelText === '到達');
+  const timeOf = t => isArr
+    ? (t.arrival  || t.departure || '')
+    : (t.departure || t.arrival  || '');
+  const timeLabel = isArr ? '到站' : '離站';
+
+  const now  = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  const th1 = stnMode >= 2
+    ? (stnMode === 2 ? '<th>車次車種</th>' : '<th>車種車次</th>')
+    : (stnMode === 1
+        ? '<th>車種</th><th style="font-family:var(--font-mono)">#</th>'
+        : '<th style="font-family:var(--font-mono)">#</th><th>車種</th>');
+  const thead = `<thead><tr>
+    ${th1}
+    <th>終點</th>
+    <th style="text-align:right">${timeLabel}</th>
+    <th style="text-align:right">誤點</th>
+  </tr></thead>`;
+
+  const all    = boards || [];
+  const hasDir = all.some(t => t.direction === 0 || t.direction === 1);
+  let tbodyRows;
+
+  if (hasDir) {
+    const south = _sliceBoards(all.filter(t => t.direction === 1), timeOf, hhmm);
+    const north = _sliceBoards(all.filter(t => t.direction === 0), timeOf, hhmm);
+    const other = _sliceBoards(all.filter(t => t.direction !== 0 && t.direction !== 1), timeOf, hhmm);
+    if (!south.length && !north.length && !other.length) {
+      tbodyRows = null;
+    } else {
+      tbodyRows =
+        (north.length ? _dirRow('↑ 往北列車', 'dir-up')   + _makeRows(north, timeOf) : '') +
+        (south.length ? _dirRow('↓ 往南列車', 'dir-down') + _makeRows(south, timeOf) : '') +
+        (other.length ? _dirRow('　其他列車', '')          + _makeRows(other, timeOf) : '');
+    }
+  } else {
+    const slice = _sliceBoards(all, timeOf, hhmm);
+    tbodyRows = slice.length ? _makeRows(slice, timeOf) : null;
+  }
+
+  const tableHtml = tbodyRows !== null
+    ? `<table class="stn-table">${thead}<tbody>${tbodyRows}</tbody></table>`
+    : `<div style="padding:8px 10px;font-size:11px;color:var(--fg-dim)">目前無車次資訊</div>`;
+
+  wrap.innerHTML = `
+    <div class="station-card">
+      <div class="station-card-header">
+        <span class="stn-label ${labelClass}">${labelText}</span>
+        ${escHtml(stationName)}
+      </div>
+      ${tableHtml}
+    </div>`;
+}
+
+function renderAll() {
+  renderStationBoard(MOCK_FROM_BOARDS, '台北', 'stn-from-wrap', 'stn-label-from', '出發');
+  renderStationBoard(MOCK_TO_BOARDS,   '高雄', 'stn-to-wrap',   'stn-label-to',   '到達');
+}
+
+// ── Debug state display ────────────────────────────────────────────────────
+function updateDebug() {
+  const isMob = _simWidth <= 600;
+  const fromHidden = document.getElementById('stn-win-from').classList.contains('stn-win-hidden');
+  const toHidden   = document.getElementById('stn-win-to').classList.contains('stn-win-hidden');
+  document.getElementById('dbg-view').textContent         = stnBoardView;
+  document.getElementById('dbg-label').textContent        = _STN_BOARD_VIEW_LABELS[stnBoardView];
+  document.getElementById('dbg-mode').textContent         = stnMode;
+  document.getElementById('dbg-mobile').textContent       = isMob;
+  document.getElementById('dbg-from-hidden').textContent  = fromHidden;
+  document.getElementById('dbg-to-hidden').textContent    = toHidden;
+}
+
+// ── Width switcher ─────────────────────────────────────────────────────────
+function setSimWidth(w) {
+  _simWidth = w;
+  document.getElementById('sim-frame').style.width        = w + 'px';
+  document.getElementById('sim-w-badge').textContent      = `simWidth = ${w}px`;
+  document.querySelectorAll('.sim-device-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.w) === w);
+  });
+  // Reset view on width change so behaviour is predictable
+  stnBoardView = 0;
+  _applyStnBoardView();
+  updateDebug();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+renderAll();
+_applyStnBoardView();
+updateDebug();
+</script>
+</body>
+</html>
