@@ -343,12 +343,12 @@
   .stn-row-hl { background: rgba(77,168,232,.08); }
   .stn-delay-pos { color: var(--red);  font-weight: 600; }
   .stn-delay-ok  { color: var(--green); font-weight: 600; }
+  .stn-win-hidden { display: none !important; }
   @media (max-width: 600px) {
     .station-duo-outer { grid-template-columns: 1fr; }
     .station-win { border-right: none; border-bottom: 1px solid var(--border); }
     .station-win:last-child { border-bottom: none; }
     .stn-table th, .stn-table td { padding: 4px 6px; font-size: 11px; }
-    .stn-win-hidden { display: none !important; }
   }
   .chip.off { opacity: .38; filter: grayscale(.8); }
   .row-past td { opacity: 0.38; }
