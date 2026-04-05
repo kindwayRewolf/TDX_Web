@@ -300,9 +300,26 @@ const chipExpress  = document.getElementById('chip-express');
     const cb = chip.querySelector('input');
     cb.checked = !cb.checked;
     chip.classList.toggle('off', !cb.checked);
+    savePrefs({
+      filterReserved: chipReserved.querySelector('input').checked,
+      filterLocal:    chipLocal.querySelector('input').checked,
+      filterExpress:  chipExpress.querySelector('input').checked,
+    });
     renderTables();
   });
 });
+// Restore saved filter chip states (default = true when not yet set)
+(function() {
+  [{ chip: chipReserved, key: 'filterReserved' },
+   { chip: chipLocal,    key: 'filterLocal'    },
+   { chip: chipExpress,  key: 'filterExpress'  },
+  ].forEach(({ chip, key }) => {
+    if (prefs[key] === false) {
+      chip.querySelector('input').checked = false;
+      chip.classList.add('off');
+    }
+  });
+})();
 
 function filterOn(id) {
   return document.querySelector(`#${id} input`).checked;
@@ -645,7 +662,11 @@ let stnMode = (() => {
 const _lastBoards = { from: null, to: null };
 
 const _STN_BOARD_VIEW_LABELS = ['🚏', '🏁', '⇄', '✖️'];
-let stnBoardView = 0;  // 0=出發only, 1=到達only, 2=both, 3=hidden
+let stnBoardView = (() => {
+  const s = localStorage.getItem('tdx_stn_board_view');
+  if (s !== null) return Math.min(3, Math.max(0, parseInt(s, 10) || 0));
+  return 0;
+})();  // 0=出發only, 1=到達only, 2=both, 3=hidden
 
 function _applyStnBoardView() {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -682,6 +703,7 @@ document.getElementById('stn-toggle-btn').addEventListener('click', () => {
 
 document.getElementById('stn-board-view-btn').addEventListener('click', () => {
   stnBoardView = (stnBoardView + 1) % 4;
+  localStorage.setItem('tdx_stn_board_view', stnBoardView);
   _applyStnBoardView();
 });
 window.addEventListener('resize', _applyStnBoardView);
