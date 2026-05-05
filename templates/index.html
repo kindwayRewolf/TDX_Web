@@ -3,11 +3,304 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>台鐵時刻表</title>
+<title>台鐵時刻表 (精簡版)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}?v={{ cache_ver }}">
-</head>
+<style>
+  /* ── 8 themes: dark→light, warm→cold ─────────────────────────────── */
+  /* T1 Midnight Ember (dark + warm) */
+  html[data-theme="t1"] {
+    --bg:#0a0402; --surface:#1a0d05; --panel:#241208; --border:#7a4820;
+    --fg:#fff5e0; --fg-dim:#d6b890; --gold:#ffc14d; --blue:#ffa040;
+    --reserved:#3a1e00; --express:#1f2210;
+  }
+  html[data-theme="t1"] header { background: linear-gradient(135deg,#100604 0%,#241208 100%); }
+
+  /* T2 Charcoal Amber (dark + neutral-warm) */
+  html[data-theme="t2"] {
+    --bg:#0a0805; --surface:#181410; --panel:#221c14; --border:#6e5a3e;
+    --fg:#fff3d6; --fg-dim:#cdb78a; --gold:#ffd24a; --blue:#f0c060;
+    --reserved:#3a2a10; --express:#1a2414;
+  }
+  html[data-theme="t2"] header { background: linear-gradient(135deg,#10100a 0%,#221c14 100%); }
+
+  /* T3 Deep Ocean (dark + cool) — site default */
+  html[data-theme="t3"] {
+    --bg:#02080f; --surface:#06182a; --panel:#0a1e33; --border:#2a5680;
+    --fg:#eaf6ff; --fg-dim:#a8c5e0; --gold:#ffd24a; --blue:#7fc4ff;
+    --reserved:#3a1e00; --express:#0d2e1a;
+  }
+  html[data-theme="t3"] header { background: linear-gradient(135deg,#04111e 0%,#0a1e33 100%); }
+
+  /* T4 Slate Frost (dark + cold) */
+  html[data-theme="t4"] {
+    --bg:#05080d; --surface:#0c1320; --panel:#101824; --border:#3e5570;
+    --fg:#ecf3fb; --fg-dim:#aec0d4; --gold:#bfe3ff; --blue:#9ad5ff;
+    --reserved:#1f2a3a; --express:#13242a;
+  }
+  html[data-theme="t4"] header { background: linear-gradient(135deg,#070b14 0%,#101824 100%); }
+
+  /* T5 Dawn Sand (light + warm) */
+  html[data-theme="t5"] {
+    --bg:#fde0ba; --surface:#f6cd97; --panel:#ffeacb; --border:#8a5a20;
+    --fg:#0d0500; --fg-dim:#3a2308; --gold:#5a2e00; --blue:#6e1f00;
+    --reserved:#fadcb0; --express:#e8e2bf;
+  }
+  html[data-theme="t5"] header { background: linear-gradient(135deg,#f6cd97 0%,#ffeacb 100%); color:#0d0500; }
+  html[data-theme="t5"] .header-text h1 { color:#4a1f00; }
+
+  /* T6 Cream Paper (light + neutral-warm) */
+  html[data-theme="t6"] {
+    --bg:#f4ecda; --surface:#ebe0c6; --panel:#fff7e8; --border:#8a7548;
+    --fg:#0d0a04; --fg-dim:#3a3220; --gold:#5a3308; --blue:#6e2a08;
+    --reserved:#f5e3c1; --express:#e8ecc8;
+  }
+  html[data-theme="t6"] header { background: linear-gradient(135deg,#ebe0c6 0%,#fff7e8 100%); }
+
+  /* T7 Sky Mist (light + cool) */
+  html[data-theme="t7"] {
+    --bg:#e3edf7; --surface:#cfdfee; --panel:#f0f6fc; --border:#4a7aa8;
+    --fg:#04101e; --fg-dim:#1f3550; --gold:#5a3608; --blue:#073a70;
+    --reserved:#f3e0bd; --express:#d4ecd9;
+  }
+  html[data-theme="t7"] header { background: linear-gradient(135deg,#cfdfee 0%,#f0f6fc 100%); }
+
+  /* T8 Arctic Snow (light + cold) */
+  html[data-theme="t8"] {
+    --bg:#e8f0f6; --surface:#d5e3ec; --panel:#f8fbfe; --border:#4a6a85;
+    --fg:#02080f; --fg-dim:#1f3344; --gold:#073a5a; --blue:#022a52;
+    --reserved:#dee9f0; --express:#d6ecec;
+  }
+  html[data-theme="t8"] header { background: linear-gradient(135deg,#d5e3ec 0%,#f8fbfe 100%); }
+
+  /* Light themes: stronger contrast for chips, labels & table text */
+  html[data-theme="t5"] .chip,
+  html[data-theme="t6"] .chip,
+  html[data-theme="t7"] .chip,
+  html[data-theme="t8"] .chip,
+  html[data-theme="t5"] .ctrl-group label,
+  html[data-theme="t6"] .ctrl-group label,
+  html[data-theme="t7"] .ctrl-group label,
+  html[data-theme="t8"] .ctrl-group label,
+  html[data-theme="t5"] #status-text,
+  html[data-theme="t6"] #status-text,
+  html[data-theme="t7"] #status-text,
+  html[data-theme="t8"] #status-text,
+  html[data-theme="t5"] .filter-label,
+  html[data-theme="t6"] .filter-label,
+  html[data-theme="t7"] .filter-label,
+  html[data-theme="t8"] .filter-label,
+  html[data-theme="t5"] td, html[data-theme="t5"] th,
+  html[data-theme="t6"] td, html[data-theme="t6"] th,
+  html[data-theme="t7"] td, html[data-theme="t7"] th,
+  html[data-theme="t8"] td, html[data-theme="t8"] th {
+    color: var(--fg);
+  }
+  html[data-theme="t5"] .header-text p,
+  html[data-theme="t6"] .header-text p,
+  html[data-theme="t7"] .header-text p,
+  html[data-theme="t8"] .header-text p,
+  html[data-theme="t5"] footer,
+  html[data-theme="t6"] footer,
+  html[data-theme="t7"] footer,
+  html[data-theme="t8"] footer {
+    color: var(--fg-dim);
+  }
+
+  /* Light themes: override hard-coded white/dim cell colors so columns 抵達/時長/備註 stay readable */
+  html[data-theme="t5"] .time-dep,
+  html[data-theme="t6"] .time-dep,
+  html[data-theme="t7"] .time-dep,
+  html[data-theme="t8"] .time-dep {
+    color: var(--fg) !important;
+  }
+  html[data-theme="t5"] .time-arr,
+  html[data-theme="t6"] .time-arr,
+  html[data-theme="t7"] .time-arr,
+  html[data-theme="t8"] .time-arr,
+  html[data-theme="t5"] .duration,
+  html[data-theme="t6"] .duration,
+  html[data-theme="t7"] .duration,
+  html[data-theme="t8"] .duration,
+  html[data-theme="t5"] .remark,
+  html[data-theme="t6"] .remark,
+  html[data-theme="t7"] .remark,
+  html[data-theme="t8"] .remark {
+    color: var(--fg) !important;
+    opacity: .85;
+  }
+  /* Fare green is too bright on light bg */
+  html[data-theme="t5"] .fare,
+  html[data-theme="t6"] .fare,
+  html[data-theme="t7"] .fare,
+  html[data-theme="t8"] .fare {
+    color: #0f6b2a !important;
+    font-weight: 600;
+  }
+  /* Reserved/express row tints are dark on light themes — use pale tints instead */
+  html[data-theme="t5"] tbody tr.row-reserved,
+  html[data-theme="t6"] tbody tr.row-reserved {
+    background: #f9d9a8 !important;
+  }
+  html[data-theme="t7"] tbody tr.row-reserved,
+  html[data-theme="t8"] tbody tr.row-reserved {
+    background: #fbe2b0 !important;
+  }
+  html[data-theme="t5"] tbody tr.row-express,
+  html[data-theme="t6"] tbody tr.row-express,
+  html[data-theme="t7"] tbody tr.row-express,
+  html[data-theme="t8"] tbody tr.row-express {
+    background: #cdebd2 !important;
+  }
+  /* Remark pills: pastel tints had near-white text — darken text for light themes */
+  html[data-theme="t5"] .remark-line,    html[data-theme="t6"] .remark-line,
+  html[data-theme="t7"] .remark-line,    html[data-theme="t8"] .remark-line {
+    background: rgba(7,58,112,.15); color: #073a70;
+  }
+  html[data-theme="t5"] .remark-schedule,html[data-theme="t6"] .remark-schedule,
+  html[data-theme="t7"] .remark-schedule,html[data-theme="t8"] .remark-schedule {
+    background: rgba(120,70,0,.15); color: #5a3308;
+  }
+  html[data-theme="t5"] .remark-seat,    html[data-theme="t6"] .remark-seat,
+  html[data-theme="t7"] .remark-seat,    html[data-theme="t8"] .remark-seat {
+    background: rgba(170,30,30,.15); color: #8a1a1a;
+  }
+  html[data-theme="t5"] .remark-bike,    html[data-theme="t6"] .remark-bike,
+  html[data-theme="t7"] .remark-bike,    html[data-theme="t8"] .remark-bike {
+    background: rgba(20,100,40,.15); color: #0f6b2a;
+  }
+  html[data-theme="t5"] .remark-delay,   html[data-theme="t6"] .remark-delay,
+  html[data-theme="t7"] .remark-delay,   html[data-theme="t8"] .remark-delay {
+    background: rgba(170,30,30,.20); color: #8a1a1a;
+  }
+  /* Chip backgrounds — dark rgba blends look muddy on light bg */
+  html[data-theme="t5"] .chip-reserved, html[data-theme="t6"] .chip-reserved,
+  html[data-theme="t7"] .chip-reserved, html[data-theme="t8"] .chip-reserved {
+    background: rgba(120,70,0,.18); color: #5a3308;
+    border-color: rgba(120,70,0,.35);
+  }
+  html[data-theme="t5"] .chip-local, html[data-theme="t6"] .chip-local,
+  html[data-theme="t7"] .chip-local, html[data-theme="t8"] .chip-local {
+    background: rgba(7,58,112,.15); color: #073a70;
+    border-color: rgba(7,58,112,.35);
+  }
+  html[data-theme="t5"] .chip-express, html[data-theme="t6"] .chip-express,
+  html[data-theme="t7"] .chip-express, html[data-theme="t8"] .chip-express {
+    background: rgba(20,100,40,.15); color: #0f6b2a;
+    border-color: rgba(20,100,40,.35);
+  }
+  /* Badge in 車種 column */
+  html[data-theme="t5"] .badge-reserved, html[data-theme="t6"] .badge-reserved,
+  html[data-theme="t7"] .badge-reserved, html[data-theme="t8"] .badge-reserved {
+    background: rgba(120,70,0,.18); color: #5a3308;
+  }
+  html[data-theme="t5"] .badge-express, html[data-theme="t6"] .badge-express,
+  html[data-theme="t7"] .badge-express, html[data-theme="t8"] .badge-express {
+    background: rgba(20,100,40,.18); color: #0f6b2a;
+  }
+  html[data-theme="t5"] .badge-local, html[data-theme="t6"] .badge-local,
+  html[data-theme="t7"] .badge-local, html[data-theme="t8"] .badge-local {
+    background: rgba(7,58,112,.15); color: #073a70;
+  }
+  /* Primary action button text on bright blue is unreadable; restore white */
+  html[data-theme="t5"] .btn-primary, html[data-theme="t6"] .btn-primary,
+  html[data-theme="t7"] .btn-primary, html[data-theme="t8"] .btn-primary {
+    color: #fff;
+  }
+
+  /* Live board (station cards) — base CSS hard-codes dark colours that disappear on light themes */
+  html[data-theme="t5"] .station-card-header,
+  html[data-theme="t6"] .station-card-header,
+  html[data-theme="t7"] .station-card-header,
+  html[data-theme="t8"] .station-card-header {
+    background: var(--surface);
+    color: var(--fg);
+  }
+  html[data-theme="t5"] .stn-section-title,
+  html[data-theme="t6"] .stn-section-title,
+  html[data-theme="t7"] .stn-section-title,
+  html[data-theme="t8"] .stn-section-title,
+  html[data-theme="t5"] .stn-table th,
+  html[data-theme="t6"] .stn-table th,
+  html[data-theme="t7"] .stn-table th,
+  html[data-theme="t8"] .stn-table th {
+    color: var(--fg);
+  }
+  html[data-theme="t5"] .stn-table td,
+  html[data-theme="t6"] .stn-table td,
+  html[data-theme="t7"] .stn-table td,
+  html[data-theme="t8"] .stn-table td {
+    color: var(--fg);
+    border-bottom-color: var(--border);
+  }
+  html[data-theme="t5"] .stn-dir-row td,
+  html[data-theme="t6"] .stn-dir-row td,
+  html[data-theme="t7"] .stn-dir-row td,
+  html[data-theme="t8"] .stn-dir-row td {
+    color: #5a3308;
+  }
+  html[data-theme="t5"] .stn-dir-row.dir-down td,
+  html[data-theme="t6"] .stn-dir-row.dir-down td {
+    background: rgba(120,70,0,.18);
+  }
+  html[data-theme="t5"] .stn-dir-row.dir-up td,
+  html[data-theme="t6"] .stn-dir-row.dir-up td {
+    background: rgba(120,70,0,.28);
+  }
+  html[data-theme="t7"] .stn-dir-row.dir-down td,
+  html[data-theme="t8"] .stn-dir-row.dir-down td {
+    background: rgba(7,58,112,.18); color: #073a70;
+  }
+  html[data-theme="t7"] .stn-dir-row.dir-up td,
+  html[data-theme="t8"] .stn-dir-row.dir-up td {
+    background: rgba(7,58,112,.28); color: #073a70;
+  }
+  html[data-theme="t5"] .stn-label-from, html[data-theme="t6"] .stn-label-from,
+  html[data-theme="t7"] .stn-label-from, html[data-theme="t8"] .stn-label-from {
+    background: rgba(7,58,112,.18); color: #073a70;
+  }
+  html[data-theme="t5"] .stn-label-to, html[data-theme="t6"] .stn-label-to,
+  html[data-theme="t7"] .stn-label-to, html[data-theme="t8"] .stn-label-to {
+    background: rgba(170,80,10,.18); color: #8a3a08;
+  }
+  html[data-theme="t5"] .stn-delay-pos, html[data-theme="t6"] .stn-delay-pos,
+  html[data-theme="t7"] .stn-delay-pos, html[data-theme="t8"] .stn-delay-pos {
+    color: #8a1a1a;
+  }
+  html[data-theme="t5"] .stn-delay-ok, html[data-theme="t6"] .stn-delay-ok,
+  html[data-theme="t7"] .stn-delay-ok, html[data-theme="t8"] .stn-delay-ok {
+    color: #0f6b2a;
+  }
+
+  /* index2: hide 到達站 board entirely (only show 出發站) */
+  #stn-win-to { display: none !important; }
+  .station-duo-outer { grid-template-columns: 1fr !important; }
+
+  /* Theme picker UI in header */
+  .theme-picker {
+    display:flex; align-items:center; gap:6px;
+    margin-top:6px;
+  }
+  .theme-picker .tp-label {
+    font-size:10px; color:var(--fg-dim);
+    letter-spacing:.08em; text-transform:uppercase;
+  }
+  .theme-swatches { display:flex; gap:4px; }
+  .theme-swatches button {
+    width:18px; height:18px; border-radius:50%;
+    border:1px solid rgba(255,255,255,.25);
+    cursor:pointer; padding:0;
+    transition:transform .15s, box-shadow .15s;
+  }
+  .theme-swatches button:hover { transform:scale(1.18); }
+  .theme-swatches button.active {
+    box-shadow:0 0 0 2px var(--gold);
+    transform:scale(1.12);
+  }
+  .sw-t1{background:#2e1a0d}.sw-t2{background:#2c241a}.sw-t3{background:#0d2540}.sw-t4{background:#15202f}
+  .sw-t5{background:#fff2dc}.sw-t6{background:#fffaf0}.sw-t7{background:#f4f9ff}.sw-t8{background:#fbfdff}
+</style></head>
 <body>
 
 <header>
@@ -21,6 +314,19 @@
   <div class="header-center">
     <div class="timer-display" id="timer">00:00:00</div>
     <a class="about-link" href="{{ url_for('static', filename='readme.html') }}" target="_blank" rel="noopener">關於本網站技術說明</a>
+    <div class="theme-picker">
+      <span class="tp-label">主題</span>
+      <div class="theme-swatches" id="theme-swatches">
+        <button class="sw-t1" data-theme="t1" title="Midnight Ember (深 / 暖)"></button>
+        <button class="sw-t2" data-theme="t2" title="Charcoal Amber (深 / 中暖)"></button>
+        <button class="sw-t3" data-theme="t3" title="Deep Ocean (深 / 中冷)"></button>
+        <button class="sw-t4" data-theme="t4" title="Slate Frost (深 / 冷)"></button>
+        <button class="sw-t5" data-theme="t5" title="Dawn Sand (淺 / 暖)"></button>
+        <button class="sw-t6" data-theme="t6" title="Cream Paper (淺 / 中暖)"></button>
+        <button class="sw-t7" data-theme="t7" title="Sky Mist (淺 / 中冷)"></button>
+        <button class="sw-t8" data-theme="t8" title="Arctic Snow (淺 / 冷)"></button>
+      </div>
+    </div>
   </div>
   <a class="tdx-logo-link" href="https://tdx.transportdata.tw/" target="_blank" rel="noopener" title="交通部TDX平臺">
     <img src="https://tdx.transportdata.tw/images/tdxlogo.png" alt="TDX 運輸資料流通服務">
@@ -128,15 +434,6 @@
       <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
     </div>
   </div>
-  <div class="table-panel" id="panel-ba">
-    <div class="panel-header">
-      <div class="panel-title" id="title-ba">🟠 回程</div>
-      <span class="panel-count" id="count-ba">—</span>
-    </div>
-    <div class="table-scroll" id="scroll-ba">
-      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
-    </div>
-  </div>
 </div>
 
 <footer>
@@ -149,6 +446,59 @@
 const STATIONS = {{ stations | tojson }};
 let CITY_STATIONS = {{ station_groups | tojson }};
 </script>
+<script>
+  // Theme picker — persists choice in localStorage (key: tdx-theme2)
+  (function(){
+    const KEY = 'tdx-theme2';
+    const saved = localStorage.getItem(KEY) || 't3';
+    document.documentElement.setAttribute('data-theme', saved);
+    // Force live-board view to "出發 only" (mode 0) — index2 only shows departure board
+    localStorage.setItem('tdx_stn_board_view', '0');
+    document.addEventListener('DOMContentLoaded', () => {
+      const wrap = document.getElementById('theme-swatches');
+      if (!wrap) return;
+      const mark = (t) => wrap.querySelectorAll('button').forEach(
+        b => b.classList.toggle('active', b.dataset.theme === t));
+      mark(saved);
+      wrap.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-theme]');
+        if (!b) return;
+        const t = b.dataset.theme;
+        document.documentElement.setAttribute('data-theme', t);
+        localStorage.setItem(KEY, t);
+        mark(t);
+      });
+    });
+  })();
+</script>
 <script src="{{ url_for('static', filename='index.js') }}?v={{ cache_ver }}"></script>
+<script>
+  // index2: live boards default-visible & 即時狀態 button also reveals them.
+  (function autoShowBoards() {
+    const wrap = document.getElementById('station-live-wrap');
+    if (wrap) wrap.style.display = 'block';
+    const fromSelEl = document.getElementById('from-sel');
+    const toSelEl   = document.getElementById('to-sel');
+    const liveBtn   = document.getElementById('live-btn');
+
+    if (liveBtn) liveBtn.addEventListener('click', () => {
+      try { window.fetchStationBoards && window.fetchStationBoards(); } catch (e) {}
+    });
+
+    let tries = 0;
+    function tryFetch() {
+      tries++;
+      const f = fromSelEl && fromSelEl.value;
+      const t = toSelEl   && toSelEl.value;
+      if (typeof window.fetchStationBoards === 'function' && f && t && f !== t) {
+        try { window.fetchStationBoards(); } catch (e) { console.error('boards err:', e); }
+        return;
+      }
+      if (tries < 30) setTimeout(tryFetch, 200);
+      else console.warn('boards: gave up — from/to not ready', {f, t});
+    }
+    tryFetch();
+  })();
+</script>
 </body>
 </html>

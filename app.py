@@ -854,6 +854,15 @@ def index():
                            cache_ver=_CACHE_VER)
 
 
+@app.route("/index2.html")
+def index2():
+    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
+                     for n, c in STATIONS.items()]
+    return render_template("index2.html", stations=stations_list,
+                           station_groups=_STATION_GROUPS,
+                           cache_ver=_CACHE_VER)
+
+
 @app.route("/api/station-groups")
 def api_station_groups():
     """Return city → station-code groups for the city picker.
