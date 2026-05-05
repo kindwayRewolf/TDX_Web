@@ -278,6 +278,76 @@
     color: var(--fg-dim);
     letter-spacing: .04em;
   }
+  .rain-indicator {
+    font-size: 11px;
+    font-weight: 500;
+    color: #66ddff;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
+  .mrt-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    margin-left: 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    white-space: nowrap;
+    color: #fff;
+    background: #666;
+  }
+  .mrt-BL { background: #0070bd; }
+  .mrt-R  { background: #e3002c; }
+  .mrt-G  { background: #008659; }
+  .mrt-O  { background: #f8b61c; color: #333; }
+  .mrt-BR { background: #c48c31; }
+  .mrt-Y  { background: #ffdb00; color: #333; }
+  .mrt-live-panel {
+    border-top: 1px solid var(--border);
+    padding: 4px 8px 6px;
+    background: var(--panel);
+  }
+  .mrt-panel-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-dim);
+    margin-bottom: 3px;
+  }
+  .mrt-live-table {
+    width: 100%;
+    font-size: 11px;
+    border-collapse: collapse;
+  }
+  .mrt-live-table th {
+    text-align: left;
+    color: var(--fg-dim);
+    font-weight: 500;
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mrt-live-table td {
+    padding: 2px 6px;
+    color: var(--fg);
+  }
+  .mrt-line-cell {
+    font-weight: 700;
+    font-size: 10px;
+    color: #fff;
+    text-align: center;
+    border-radius: 3px;
+    padding: 2px 4px !important;
+    vertical-align: middle;
+  }
+  .mrt-arriving {
+    color: #69f0ae;
+    font-weight: 700;
+  }
+  .mrt-flt {
+    font-size: 10px;
+    color: var(--fg-dim);
+    white-space: nowrap;
+  }
   .stn-toggle-btn {
     background: var(--panel);
     border: 1px solid var(--border);

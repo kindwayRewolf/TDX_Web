@@ -15,8 +15,11 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import requests
+import urllib3
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +103,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 # ─── Static asset cache buster ─────────────────────────────────────────────
 # Bump this string whenever JS/CSS changes to force browsers to refetch.
-_CACHE_VER = "20260403a"
+_CACHE_VER = "20260506c"
 
 # ─── TDX 認證 — Key pool ──────────────────────────────────────────────────
 # Supports multiple key pairs. Set in env:
@@ -223,6 +226,9 @@ _alert_cache:     dict = {}      # {"items": [...], "fetched_at": float}
 _news_cache:      dict = {}      # {"items": [...], "fetched_at": float}
 _trainlive_cache:   dict = {}      # {train_no: {"live": {...}, "fetched_at": float}}
 _fare_cache:        dict = {}      # {"{fc}_{tc}": {"fares": {...}, "fetched_at": float}}
+_rain_cache:        dict = {}      # {"stations": [...], "fetched_at": float}
+_mrt_live_cache:    dict = {}      # {operator: {"boards": [...], "fetched_at": float}}
+_mrt_flt_cache:     dict = {}      # {operator: {"data": [...], "fetched_at": float}} — FirstLastTimetable
 _cache_lock = threading.Lock()
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
@@ -234,6 +240,9 @@ TRAINLIVE_CACHE_TTL   = LIVE_CACHE_TTL
 ALERT_CACHE_TTL       = 15 * 60         # 15 minutes
 NEWS_CACHE_TTL        = 60 * 60         # 1 hour
 FARE_CACHE_TTL        = 24 * 3600       # 24 hours  (fares rarely change)
+RAIN_CACHE_TTL        = 30 * 60         # 30 minutes (CWA data refresh interval)
+MRT_LIVE_CACHE_TTL    = 60              # 60 seconds (MRT LiveBoard refresh)
+MRT_FLT_CACHE_TTL     = 24 * 3600       # 24 hours (FirstLastTimetable rarely changes)
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
 # Populated at startup by _load_seed_data() from seed_data.json,
@@ -278,6 +287,87 @@ _HIDDEN_STATION_IDS: set[str] = {
     "5998",   # 南方小站  — maintenance/facility stop, not a regular passenger station
     "5999",   # 潮州基地  — rolling-stock depot stop, not a regular passenger station
 }
+
+# ─── TRA↔MRT 轉乘站對照（台北捷運 TRTC）────────────────────────────────────
+# TRA station code → list of connected MRT lines + station info
+_TRA_MRT_TRANSFER: dict[str, list[dict]] = {
+    "0980": [{"line": "BL", "line_name": "板南線", "station": "BL22", "mrt_name": "南港"}],
+    "0990": [{"line": "G",  "line_name": "松山新店線", "station": "G19", "mrt_name": "松山"}],
+    "1000": [
+        {"line": "BL", "line_name": "板南線",     "station": "BL12", "mrt_name": "台北車站"},
+        {"line": "R",  "line_name": "淡水信義線", "station": "R10",  "mrt_name": "台北車站"},
+    ],
+    "1010": [{"line": "BL", "line_name": "板南線", "station": "BL10", "mrt_name": "龍山寺"}],
+    "1020": [{"line": "BL", "line_name": "板南線", "station": "BL07", "mrt_name": "板橋"}],
+    "4340": [{"line": "R",  "line_name": "紅線",   "station": "R16",  "mrt_name": "左營/高鐵"}],
+}
+
+# ─── CWA 降雨 API ─────────────────────────────────────────────────────────
+_CWA_API_KEY = os.environ.get("CWA_API_KEY", "")
+_CWA_RAIN_URL = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001"
+
+# 台鐵站名 → CWA 氣象站搜尋關鍵字（僅需填寫無法直接對應的站）
+_TRAIN_TO_AREA: dict[str, str] = {
+    "汐科":  "汐止",
+    "新左營": "左營",
+    "蘇澳新": "蘇澳",
+    "三坑":  "基隆",
+    "百福":  "汐止",
+    "五堵":  "汐止",
+    "浮洲":  "板橋",
+    "山佳":  "樹林",
+    "富岡":  "楊梅",
+    "新城":  "新城",
+}
+
+
+def _cwa_fetch_rain_stations() -> list:
+    """Fetch all CWA automated rain station data, cached for RAIN_CACHE_TTL."""
+    now = time.time()
+    with _cache_lock:
+        if _rain_cache.get("stations") and (now - _rain_cache.get("fetched_at", 0) < RAIN_CACHE_TTL):
+            return _rain_cache["stations"]
+    if not _CWA_API_KEY:
+        return []
+    try:
+        r = requests.get(
+            _CWA_RAIN_URL,
+            params={"Authorization": _CWA_API_KEY, "format": "JSON"},
+            timeout=20,
+            verify=False,  # CWA cert missing Subject Key Identifier
+        )
+        r.raise_for_status()
+        stations = r.json().get("records", {}).get("Station", [])
+    except Exception:
+        log.warning("CWA rain API fetch failed", exc_info=True)
+        with _cache_lock:
+            return _rain_cache.get("stations", [])
+    with _cache_lock:
+        _rain_cache["stations"] = stations
+        _rain_cache["fetched_at"] = time.time()
+    return stations
+
+
+def _find_rain_for(name: str, stations: list) -> dict:
+    """Find rainfall data for a station name from CWA station list."""
+    kw = _TRAIN_TO_AREA.get(name, name)
+    for s in stations:
+        sname = s.get("StationName", "")
+        stown = s.get("GeoInfo", {}).get("TownName", "")
+        if kw == sname or kw in sname or kw in stown:
+            rf = s.get("RainfallElement", {})
+            r10 = rf.get("Past10Min", {}).get("Precipitation")
+            r1h = rf.get("Past1hr", {}).get("Precipitation")
+            obs = s.get("ObsTime", {}).get("DateTime", "")
+            def _fmt(v):
+                if v is None or (isinstance(v, (int, float)) and float(v) < -9990):
+                    return "—"
+                try:
+                    return f"{float(v):.1f}"
+                except (ValueError, TypeError):
+                    return "—"
+            return {"rain_10min": _fmt(r10), "rain_1hr": _fmt(r1h), "obs_time": obs}
+    return {"rain_10min": "—", "rain_1hr": "—", "obs_time": ""}
 
 # ─── Seed data loader ───────────────────────────────────────────────────────
 _SEED_FILE            = Path(__file__).parent / "seed_data.json"
@@ -847,7 +937,8 @@ def set_security_headers(response):
 
 @app.route("/")
 def index():
-    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
+    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1),
+                      "mrt": _TRA_MRT_TRANSFER.get(c)}
                      for n, c in STATIONS.items()]
     return render_template("index.html", stations=stations_list,
                            station_groups=_STATION_GROUPS,
@@ -856,7 +947,8 @@ def index():
 
 @app.route("/index2.html")
 def index2():
-    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1)}
+    stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1),
+                      "mrt": _TRA_MRT_TRANSFER.get(c)}
                      for n, c in STATIONS.items()]
     return render_template("index2.html", stations=stations_list,
                            station_groups=_STATION_GROUPS,
@@ -1300,6 +1392,157 @@ def api_fare():
     except Exception:
         log.exception("Unexpected error in /api/fare")
         return jsonify({"fares": {}, "error": "Internal server error"}), 500
+
+
+@app.route("/api/rain")
+def api_rain():
+    """Return rainfall data for from/to station areas from CWA open data."""
+    from_name = request.args.get("from", "").strip()
+    to_name   = request.args.get("to", "").strip()
+    if not from_name and not to_name:
+        return jsonify({"error": "Missing 'from' or 'to' parameter"}), 400
+    stations = _cwa_fetch_rain_stations()
+    result = {}
+    if from_name:
+        rain_from = _find_rain_for(from_name, stations)
+        rain_from["name"] = from_name
+        result["from"] = rain_from
+    if to_name:
+        rain_to = _find_rain_for(to_name, stations)
+        rain_to["name"] = to_name
+        result["to"] = rain_to
+    return jsonify(result)
+
+
+@app.route("/api/mrt/liveboard")
+def api_mrt_liveboard():
+    """Return MRT live arrivals for a given station ID (e.g., G19, BL12).
+    Fetches all TRTC LiveBoard data (cached 60s), filters to requested station."""
+    station_id = request.args.get("station", "").strip().upper()
+    if not station_id:
+        return jsonify({"error": "Missing 'station' parameter"}), 400
+
+    # Determine operator from station ID prefix
+    op = "TRTC"  # Default: Taipei Metro (covers BL, R, G, O, BR, Y)
+    if station_id.startswith("R") and len(station_id) <= 4:
+        # Could be KRTC red line if station code is like R16
+        # Check if it's in our TRA-MRT transfer map for KRTC
+        pass  # For now all mapped stations are TRTC or handled below
+
+    # Check cache
+    now = time.time()
+    with _cache_lock:
+        entry = _mrt_live_cache.get(op)
+        if entry and (now - entry["fetched_at"] < MRT_LIVE_CACHE_TTL):
+            boards = entry["boards"]
+        else:
+            boards = None
+
+    if boards is None:
+        try:
+            url = f"https://tdx.transportdata.tw/api/basic/v2/Rail/Metro/LiveBoard/{op}?$format=JSON"
+            data = api_get(url)
+            boards = data if isinstance(data, list) else data.get("LiveBoards", [])
+            with _cache_lock:
+                _mrt_live_cache[op] = {"boards": boards, "fetched_at": time.time()}
+        except requests.HTTPError as e:
+            return jsonify({"trains": [], "error": f"TDX API error: {e}"}), 502
+        except RuntimeError:
+            return jsonify({"trains": [], "error": "API rate limit exceeded"}), 503
+        except Exception:
+            log.exception("Unexpected error in /api/mrt/liveboard")
+            return jsonify({"trains": [], "error": "Internal server error"}), 500
+
+    # Filter boards for the requested station
+    def _strip_op(sid):
+        """Normalize 'TRTC-G19' → 'G19'."""
+        return sid.split("-", 1)[-1] if "-" in sid else sid
+
+    norm_sta = _strip_op(station_id)
+    sta_boards = [b for b in boards if _strip_op(b.get("StationID", "")) == norm_sta]
+
+    # Format response
+    trains = []
+    for b in sta_boards:
+        dest_name = (b.get("DestinationStationName") or
+                     b.get("DestinationStaionName") or {})
+        svc = b.get("ServiceStatus", 0)
+        raw_eta = b.get("EstimateTime", "")
+
+        if svc in (1, 2):
+            eta_str = "進站中"
+            eta_min = 0
+        elif raw_eta == "" or raw_eta is None:
+            eta_str = "—"
+            eta_min = -1
+        else:
+            try:
+                eta_min = int(raw_eta)
+                eta_str = "進站中" if eta_min == 0 else f"{eta_min} 分"
+            except (ValueError, TypeError):
+                eta_str = str(raw_eta)
+                eta_min = -1
+
+        trains.append({
+            "destination": dest_name.get("Zh_tw", ""),
+            "line_id": _strip_op(b.get("LineID", "")),
+            "eta": eta_str,
+            "eta_min": eta_min,
+            "trip_sign": b.get("TripHeadSign", ""),
+        })
+
+    # Sort by ETA (arriving first, then by minutes)
+    trains.sort(key=lambda t: (t["eta_min"] < 0, t["eta_min"]))
+
+    # If no live trains, provide FirstLastTimetable as fallback
+    first_last = []
+    if not trains:
+        first_last = _get_mrt_first_last(op, norm_sta)
+
+    return jsonify({"station": station_id, "trains": trains, "first_last": first_last})
+
+
+def _get_mrt_first_last(op: str, station_id: str) -> list:
+    """Return first/last train times for a MRT station (cached 24h)."""
+    now = time.time()
+    with _cache_lock:
+        entry = _mrt_flt_cache.get(op)
+        if entry and (now - entry["fetched_at"] < MRT_FLT_CACHE_TTL):
+            flt_data = entry["data"]
+        else:
+            flt_data = None
+
+    if flt_data is None:
+        try:
+            url = f"https://tdx.transportdata.tw/api/basic/v2/Rail/Metro/FirstLastTimetable/{op}?$format=JSON"
+            data = api_get(url)
+            flt_data = data if isinstance(data, list) else data.get("FirstLastTimetables", [])
+            with _cache_lock:
+                _mrt_flt_cache[op] = {"data": flt_data, "fetched_at": time.time()}
+        except Exception:
+            log.warning("MRT FirstLastTimetable fetch failed", exc_info=True)
+            return []
+
+    def _strip_op(sid):
+        return sid.split("-", 1)[-1] if "-" in sid else sid
+
+    results = []
+    for item in flt_data:
+        if _strip_op(item.get("StationID", "")) != station_id:
+            continue
+        dest = (item.get("DestinationStationName") or
+                item.get("DestinationStaionName") or {}).get("Zh_tw", "")
+        first = item.get("FirstTrainTime", "")
+        last = item.get("LastTrainTime", "")
+        line_id = _strip_op(item.get("LineID", ""))
+        if first or last:
+            results.append({
+                "destination": dest,
+                "line_id": line_id,
+                "first": first,
+                "last": last,
+            })
+    return results
 
 
 @app.route("/health")

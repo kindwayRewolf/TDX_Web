@@ -689,8 +689,8 @@ document.getElementById('stn-toggle-btn').addEventListener('click', () => {
   stnMode = (stnMode + 1) % 4;
   localStorage.setItem('tdx_stn_mode', stnMode);
   document.getElementById('stn-toggle-btn').textContent = STN_MODE_LABELS[stnMode];
-  if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發');
-  if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達');
+  if (_lastBoards.from) renderStationBoard(_lastBoards.from.boards, _lastBoards.from.name, 'stn-from-wrap', 'stn-label-from', '出發', _lastBoards.from.code);
+  if (_lastBoards.to)   renderStationBoard(_lastBoards.to.boards,   _lastBoards.to.name,   'stn-to-wrap',   'stn-label-to',   '到達', _lastBoards.to.code);
 });
 
 document.getElementById('stn-board-view-btn').addEventListener('click', () => {
@@ -743,7 +743,7 @@ function _dirRow(label, cls) {
   return `<tr class="stn-dir-row ${cls}"><td colspan="6">${label}</td></tr>`;
 }
 
-function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) {
+function renderStationBoard(boards, stationName, wrapId, labelClass, labelText, stationCode) {
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
 
@@ -752,6 +752,13 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
   const timeLabel = isArr ? '到站' : '離站';
   const now  = new Date();
   const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  // MRT transfer badge
+  const stnData = stationCode ? STATION_MAP.get(stationCode) : null;
+  const mrtList = stnData?.mrt;
+  const mrtBadge = mrtList
+    ? mrtList.map(m => `<span class="mrt-badge mrt-${m.line}" title="${m.line_name} ${m.mrt_name} (${m.station})">🚇 ${m.station}</span>`).join('')
+    : '';
 
   const th1 = stnMode >= 2
     ? (stnMode === 2 ? '<th>車次車種</th>' : '<th>車種車次</th>')
@@ -786,7 +793,7 @@ function renderStationBoard(boards, stationName, wrapId, labelClass, labelText) 
 
   wrap.innerHTML =
     `<div class="station-card">
-      <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}</div>
+      <div class="station-card-header"><span class="stn-label ${labelClass}">${labelText}</span>${escHtml(stationName)}${mrtBadge}</div>
       ${tableHtml}
     </div>`;
 
@@ -828,12 +835,18 @@ async function fetchStationBoards() {
   const d1 = r1.status === 'fulfilled' ? r1.value : {};
   const d2 = r2.status === 'fulfilled' ? r2.value : {};
 
-  _lastBoards.from = { boards: d1.boards || [], name: fromName };
-  _lastBoards.to   = { boards: d2.boards || [], name: toName };
+  _lastBoards.from = { boards: d1.boards || [], name: fromName, code: fromCode };
+  _lastBoards.to   = { boards: d2.boards || [], name: toName, code: toCode };
 
-  renderStationBoard(d1.boards || [], fromName, 'stn-from-wrap', 'stn-label-from', '出發');
-  renderStationBoard(d2.boards || [], toName,   'stn-to-wrap',   'stn-label-to',   '到達');
+  renderStationBoard(d1.boards || [], fromName, 'stn-from-wrap', 'stn-label-from', '出發', fromCode);
+  renderStationBoard(d2.boards || [], toName,   'stn-to-wrap',   'stn-label-to',   '到達', toCode);
   _applyStnBoardView();
+
+  // Fetch rain data for both stations
+  fetchRain(fromName, toName);
+
+  // Fetch MRT live arrivals for transfer stations
+  fetchMrtLive(fromCode, toCode);
 
   // Also update delay overlay if live data was already shown
   if (d1.delays || d2.delays) {
@@ -845,6 +858,162 @@ async function fetchStationBoards() {
     overlayDelays(document.getElementById('scroll-ab'));
     overlayDelays(document.getElementById('scroll-ba'));
   }
+}
+
+// ── Rain data fetch ────────────────────────────────────────────────────────
+let _rainRefreshTimer = null;
+const _RAIN_REFRESH_MS = 30 * 60_000; // 30 minutes
+
+async function fetchRain(fromName, toName) {
+  const elFrom = document.getElementById('rain-from');
+  const elTo   = document.getElementById('rain-to');
+  if (!fromName && !toName) {
+    if (elFrom) elFrom.textContent = '';
+    if (elTo)   elTo.textContent = '';
+    return;
+  }
+  try {
+    const params = new URLSearchParams();
+    if (fromName) params.set('from', fromName);
+    if (toName)   params.set('to', toName);
+    const resp = await fetch(`/api/rain?${params}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (elFrom && data.from) {
+      const r10 = data.from.rain_10min || '—';
+      const r1h = data.from.rain_1hr   || '—';
+      elFrom.textContent = `☔ ${r10}/${r1h} mm`;
+      elFrom.title = `10分鐘/1小時降雨量（觀測時間：${data.from.obs_time || '—'}）`;
+    }
+    if (elTo && data.to) {
+      const r10 = data.to.rain_10min || '—';
+      const r1h = data.to.rain_1hr   || '—';
+      elTo.textContent = `☔ ${r10}/${r1h} mm`;
+      elTo.title = `10分鐘/1小時降雨量（觀測時間：${data.to.obs_time || '—'}）`;
+    }
+  } catch (e) {
+    // Silent fail — rain is optional
+  }
+  // Schedule next refresh
+  if (_rainRefreshTimer) clearTimeout(_rainRefreshTimer);
+  _rainRefreshTimer = setTimeout(() => {
+    const fc = fromSel.value, tc = toSel.value;
+    if (fc && tc && fc !== tc) {
+      const fn = STATION_MAP.get(fc)?.name || fc;
+      const tn = STATION_MAP.get(tc)?.name || tc;
+      fetchRain(fn, tn);
+    }
+  }, _RAIN_REFRESH_MS);
+}
+
+// ── MRT Live Arrival ───────────────────────────────────────────────────────
+let _mrtRefreshTimer = null;
+const _MRT_REFRESH_MS = 60_000; // 60 seconds
+
+async function fetchMrtLive(fromCode, toCode) {
+  const fromMrt = STATION_MAP.get(fromCode)?.mrt;
+  const toMrt   = STATION_MAP.get(toCode)?.mrt;
+  if (!fromMrt && !toMrt) return;
+
+  const fetches = [];
+  const mrtStations = new Set();
+
+  // Collect unique MRT station IDs to fetch
+  if (fromMrt) fromMrt.forEach(m => mrtStations.add(m.station));
+  if (toMrt)   toMrt.forEach(m => mrtStations.add(m.station));
+
+  try {
+    const results = await Promise.allSettled(
+      [...mrtStations].map(sid =>
+        fetch(`/api/mrt/liveboard?station=${sid}`).then(r => r.json())
+      )
+    );
+
+    // Build map: stationId → {trains, first_last}
+    const mrtData = {};
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value.station) {
+        mrtData[r.value.station] = {
+          trains: r.value.trains || [],
+          first_last: r.value.first_last || [],
+        };
+      }
+    }
+
+    // Render MRT arrivals under from-station
+    if (fromMrt) {
+      renderMrtPanel('stn-from-wrap', fromMrt, mrtData);
+    }
+    // Render MRT arrivals under to-station
+    if (toMrt) {
+      renderMrtPanel('stn-to-wrap', toMrt, mrtData);
+    }
+  } catch (e) {
+    // Silent fail — MRT live is optional
+  }
+
+  // Schedule refresh
+  if (_mrtRefreshTimer) clearTimeout(_mrtRefreshTimer);
+  _mrtRefreshTimer = setTimeout(() => {
+    const fc = fromSel.value, tc = toSel.value;
+    if (fc && tc && fc !== tc) fetchMrtLive(fc, tc);
+  }, _MRT_REFRESH_MS);
+}
+
+function renderMrtPanel(wrapId, mrtList, mrtData) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  // Remove any existing MRT panel
+  const existing = wrap.querySelector('.mrt-live-panel');
+  if (existing) existing.remove();
+
+  let rows = '';
+  let hasLive = false;
+  for (const m of mrtList) {
+    const info = mrtData[m.station] || { trains: [], first_last: [] };
+    const trains = info.trains;
+    const firstLast = info.first_last;
+
+    // Show live trains if available
+    const top = trains.slice(0, 4);
+    if (top.length) {
+      hasLive = true;
+      for (let i = 0; i < top.length; i++) {
+        const t = top[i];
+        const lineCell = i === 0
+          ? `<td class="mrt-line-cell mrt-${m.line}" rowspan="${Math.min(top.length, 4)}">${m.station}</td>`
+          : '';
+        const etaCls = t.eta_min === 0 ? ' class="mrt-arriving"' : '';
+        rows += `<tr>${lineCell}<td>${escHtml(t.destination)}</td><td${etaCls}>${escHtml(t.eta)}</td></tr>`;
+      }
+    } else if (firstLast.length) {
+      // Fallback: show first/last train times
+      for (let i = 0; i < firstLast.length; i++) {
+        const fl = firstLast[i];
+        const lineCell = i === 0
+          ? `<td class="mrt-line-cell mrt-${m.line}" rowspan="${firstLast.length}">${m.station}</td>`
+          : '';
+        rows += `<tr>${lineCell}<td>${escHtml(fl.destination)}</td><td class="mrt-flt">首 ${fl.first} / 末 ${fl.last}</td></tr>`;
+      }
+    } else {
+      rows += `<tr><td class="mrt-line-cell mrt-${m.line}">${m.station}</td><td>${m.line_name}</td><td style="color:var(--fg-dim)">無資料</td></tr>`;
+    }
+  }
+
+  if (!rows) return;
+
+  const title = hasLive ? '🚇 捷運即時到站' : '🚇 捷運首末班車';
+  const thEta = hasLive ? '到站' : '首/末班';
+  const panel = document.createElement('div');
+  panel.className = 'mrt-live-panel';
+  panel.innerHTML = `
+    <div class="mrt-panel-header">${title}</div>
+    <table class="mrt-live-table">
+      <thead><tr><th>站</th><th>終點</th><th>${thEta}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  wrap.appendChild(panel);
 }
 
 // ── Live delay overlay ─────────────────────────────────────────────────────

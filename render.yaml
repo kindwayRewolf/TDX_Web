@@ -19,3 +19,5 @@ services:
         sync: false
       - key: TDX_CLIENT_SECRET_2
         sync: false
+      - key: CWA_API_KEY
+        sync: false
