@@ -9,39 +9,30 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}?v={{ cache_ver }}">
 <style>
   /* ── 8 themes: dark→light, warm→cold ─────────────────────────────── */
-  /* T1 Midnight Ember (dark + warm) */
   html[data-theme="t1"] {
     --bg:#0a0402; --surface:#1a0d05; --panel:#241208; --border:#7a4820;
     --fg:#fff5e0; --fg-dim:#d6b890; --gold:#ffc14d; --blue:#ffa040;
     --reserved:#3a1e00; --express:#1f2210;
   }
   html[data-theme="t1"] header { background: linear-gradient(135deg,#100604 0%,#241208 100%); }
-
-  /* T2 Charcoal Amber (dark + neutral-warm) */
   html[data-theme="t2"] {
     --bg:#0a0805; --surface:#181410; --panel:#221c14; --border:#6e5a3e;
     --fg:#fff3d6; --fg-dim:#cdb78a; --gold:#ffd24a; --blue:#f0c060;
     --reserved:#3a2a10; --express:#1a2414;
   }
   html[data-theme="t2"] header { background: linear-gradient(135deg,#10100a 0%,#221c14 100%); }
-
-  /* T3 Deep Ocean (dark + cool) — site default */
   html[data-theme="t3"] {
     --bg:#02080f; --surface:#06182a; --panel:#0a1e33; --border:#2a5680;
     --fg:#eaf6ff; --fg-dim:#a8c5e0; --gold:#ffd24a; --blue:#7fc4ff;
     --reserved:#3a1e00; --express:#0d2e1a;
   }
   html[data-theme="t3"] header { background: linear-gradient(135deg,#04111e 0%,#0a1e33 100%); }
-
-  /* T4 Slate Frost (dark + cold) */
   html[data-theme="t4"] {
     --bg:#05080d; --surface:#0c1320; --panel:#101824; --border:#3e5570;
     --fg:#ecf3fb; --fg-dim:#aec0d4; --gold:#bfe3ff; --blue:#9ad5ff;
     --reserved:#1f2a3a; --express:#13242a;
   }
   html[data-theme="t4"] header { background: linear-gradient(135deg,#070b14 0%,#101824 100%); }
-
-  /* T5 Dawn Sand (light + warm) */
   html[data-theme="t5"] {
     --bg:#fde0ba; --surface:#f6cd97; --panel:#ffeacb; --border:#8a5a20;
     --fg:#0d0500; --fg-dim:#3a2308; --gold:#5a2e00; --blue:#6e1f00;
@@ -49,24 +40,18 @@
   }
   html[data-theme="t5"] header { background: linear-gradient(135deg,#f6cd97 0%,#ffeacb 100%); color:#0d0500; }
   html[data-theme="t5"] .header-text h1 { color:#4a1f00; }
-
-  /* T6 Cream Paper (light + neutral-warm) */
   html[data-theme="t6"] {
     --bg:#f4ecda; --surface:#ebe0c6; --panel:#fff7e8; --border:#8a7548;
     --fg:#0d0a04; --fg-dim:#3a3220; --gold:#5a3308; --blue:#6e2a08;
     --reserved:#f5e3c1; --express:#e8ecc8;
   }
   html[data-theme="t6"] header { background: linear-gradient(135deg,#ebe0c6 0%,#fff7e8 100%); }
-
-  /* T7 Sky Mist (light + cool) */
   html[data-theme="t7"] {
     --bg:#e3edf7; --surface:#cfdfee; --panel:#f0f6fc; --border:#4a7aa8;
     --fg:#04101e; --fg-dim:#1f3550; --gold:#5a3608; --blue:#073a70;
     --reserved:#f3e0bd; --express:#d4ecd9;
   }
   html[data-theme="t7"] header { background: linear-gradient(135deg,#cfdfee 0%,#f0f6fc 100%); }
-
-  /* T8 Arctic Snow (light + cold) */
   html[data-theme="t8"] {
     --bg:#e8f0f6; --surface:#d5e3ec; --panel:#f8fbfe; --border:#4a6a85;
     --fg:#02080f; --fg-dim:#1f3344; --gold:#073a5a; --blue:#022a52;
@@ -74,214 +59,109 @@
   }
   html[data-theme="t8"] header { background: linear-gradient(135deg,#d5e3ec 0%,#f8fbfe 100%); }
 
-  /* Light themes: stronger contrast for chips, labels & table text */
-  html[data-theme="t5"] .chip,
-  html[data-theme="t6"] .chip,
-  html[data-theme="t7"] .chip,
-  html[data-theme="t8"] .chip,
-  html[data-theme="t5"] .ctrl-group label,
-  html[data-theme="t6"] .ctrl-group label,
-  html[data-theme="t7"] .ctrl-group label,
-  html[data-theme="t8"] .ctrl-group label,
-  html[data-theme="t5"] #status-text,
-  html[data-theme="t6"] #status-text,
-  html[data-theme="t7"] #status-text,
-  html[data-theme="t8"] #status-text,
-  html[data-theme="t5"] .filter-label,
-  html[data-theme="t6"] .filter-label,
-  html[data-theme="t7"] .filter-label,
-  html[data-theme="t8"] .filter-label,
+  /* Light themes — readability overrides */
+  html[data-theme="t5"] .chip, html[data-theme="t6"] .chip,
+  html[data-theme="t7"] .chip, html[data-theme="t8"] .chip,
+  html[data-theme="t5"] .ctrl-group label, html[data-theme="t6"] .ctrl-group label,
+  html[data-theme="t7"] .ctrl-group label, html[data-theme="t8"] .ctrl-group label,
+  html[data-theme="t5"] #status-text, html[data-theme="t6"] #status-text,
+  html[data-theme="t7"] #status-text, html[data-theme="t8"] #status-text,
+  html[data-theme="t5"] .filter-label, html[data-theme="t6"] .filter-label,
+  html[data-theme="t7"] .filter-label, html[data-theme="t8"] .filter-label,
   html[data-theme="t5"] td, html[data-theme="t5"] th,
   html[data-theme="t6"] td, html[data-theme="t6"] th,
   html[data-theme="t7"] td, html[data-theme="t7"] th,
-  html[data-theme="t8"] td, html[data-theme="t8"] th {
-    color: var(--fg);
-  }
-  html[data-theme="t5"] .header-text p,
-  html[data-theme="t6"] .header-text p,
-  html[data-theme="t7"] .header-text p,
-  html[data-theme="t8"] .header-text p,
-  html[data-theme="t5"] footer,
-  html[data-theme="t6"] footer,
-  html[data-theme="t7"] footer,
-  html[data-theme="t8"] footer {
-    color: var(--fg-dim);
-  }
-
-  /* Light themes: override hard-coded white/dim cell colors so columns 抵達/時長/備註 stay readable */
-  html[data-theme="t5"] .time-dep,
-  html[data-theme="t6"] .time-dep,
-  html[data-theme="t7"] .time-dep,
-  html[data-theme="t8"] .time-dep {
-    color: var(--fg) !important;
-  }
-  html[data-theme="t5"] .time-arr,
-  html[data-theme="t6"] .time-arr,
-  html[data-theme="t7"] .time-arr,
-  html[data-theme="t8"] .time-arr,
-  html[data-theme="t5"] .duration,
-  html[data-theme="t6"] .duration,
-  html[data-theme="t7"] .duration,
-  html[data-theme="t8"] .duration,
-  html[data-theme="t5"] .remark,
-  html[data-theme="t6"] .remark,
-  html[data-theme="t7"] .remark,
-  html[data-theme="t8"] .remark {
-    color: var(--fg) !important;
-    opacity: .85;
-  }
-  /* Fare green is too bright on light bg */
-  html[data-theme="t5"] .fare,
-  html[data-theme="t6"] .fare,
-  html[data-theme="t7"] .fare,
-  html[data-theme="t8"] .fare {
-    color: #0f6b2a !important;
-    font-weight: 600;
-  }
-  /* Reserved/express row tints are dark on light themes — use pale tints instead */
-  html[data-theme="t5"] tbody tr.row-reserved,
-  html[data-theme="t6"] tbody tr.row-reserved {
-    background: #f9d9a8 !important;
-  }
-  html[data-theme="t7"] tbody tr.row-reserved,
-  html[data-theme="t8"] tbody tr.row-reserved {
-    background: #fbe2b0 !important;
-  }
-  html[data-theme="t5"] tbody tr.row-express,
-  html[data-theme="t6"] tbody tr.row-express,
-  html[data-theme="t7"] tbody tr.row-express,
-  html[data-theme="t8"] tbody tr.row-express {
-    background: #cdebd2 !important;
-  }
-  /* Remark pills: pastel tints had near-white text — darken text for light themes */
-  html[data-theme="t5"] .remark-line,    html[data-theme="t6"] .remark-line,
-  html[data-theme="t7"] .remark-line,    html[data-theme="t8"] .remark-line {
-    background: rgba(7,58,112,.15); color: #073a70;
-  }
-  html[data-theme="t5"] .remark-schedule,html[data-theme="t6"] .remark-schedule,
-  html[data-theme="t7"] .remark-schedule,html[data-theme="t8"] .remark-schedule {
-    background: rgba(120,70,0,.15); color: #5a3308;
-  }
-  html[data-theme="t5"] .remark-seat,    html[data-theme="t6"] .remark-seat,
-  html[data-theme="t7"] .remark-seat,    html[data-theme="t8"] .remark-seat {
-    background: rgba(170,30,30,.15); color: #8a1a1a;
-  }
-  html[data-theme="t5"] .remark-bike,    html[data-theme="t6"] .remark-bike,
-  html[data-theme="t7"] .remark-bike,    html[data-theme="t8"] .remark-bike {
-    background: rgba(20,100,40,.15); color: #0f6b2a;
-  }
-  html[data-theme="t5"] .remark-delay,   html[data-theme="t6"] .remark-delay,
-  html[data-theme="t7"] .remark-delay,   html[data-theme="t8"] .remark-delay {
-    background: rgba(170,30,30,.20); color: #8a1a1a;
-  }
-  /* Chip backgrounds — dark rgba blends look muddy on light bg */
+  html[data-theme="t8"] td, html[data-theme="t8"] th { color: var(--fg); }
+  html[data-theme="t5"] .header-text p, html[data-theme="t6"] .header-text p,
+  html[data-theme="t7"] .header-text p, html[data-theme="t8"] .header-text p,
+  html[data-theme="t5"] footer, html[data-theme="t6"] footer,
+  html[data-theme="t7"] footer, html[data-theme="t8"] footer { color: var(--fg-dim); }
+  html[data-theme="t5"] .time-dep, html[data-theme="t6"] .time-dep,
+  html[data-theme="t7"] .time-dep, html[data-theme="t8"] .time-dep { color: var(--fg) !important; }
+  html[data-theme="t5"] .time-arr, html[data-theme="t6"] .time-arr,
+  html[data-theme="t7"] .time-arr, html[data-theme="t8"] .time-arr,
+  html[data-theme="t5"] .duration, html[data-theme="t6"] .duration,
+  html[data-theme="t7"] .duration, html[data-theme="t8"] .duration,
+  html[data-theme="t5"] .remark, html[data-theme="t6"] .remark,
+  html[data-theme="t7"] .remark, html[data-theme="t8"] .remark { color: var(--fg) !important; opacity: .85; }
+  html[data-theme="t5"] .fare, html[data-theme="t6"] .fare,
+  html[data-theme="t7"] .fare, html[data-theme="t8"] .fare { color: #0f6b2a !important; font-weight: 600; }
+  html[data-theme="t5"] tbody tr.row-reserved, html[data-theme="t6"] tbody tr.row-reserved { background: #f9d9a8 !important; }
+  html[data-theme="t7"] tbody tr.row-reserved, html[data-theme="t8"] tbody tr.row-reserved { background: #fbe2b0 !important; }
+  html[data-theme="t5"] tbody tr.row-express, html[data-theme="t6"] tbody tr.row-express,
+  html[data-theme="t7"] tbody tr.row-express, html[data-theme="t8"] tbody tr.row-express { background: #cdebd2 !important; }
+  html[data-theme="t5"] .remark-line, html[data-theme="t6"] .remark-line,
+  html[data-theme="t7"] .remark-line, html[data-theme="t8"] .remark-line { background: rgba(7,58,112,.15); color: #073a70; }
+  html[data-theme="t5"] .remark-schedule, html[data-theme="t6"] .remark-schedule,
+  html[data-theme="t7"] .remark-schedule, html[data-theme="t8"] .remark-schedule { background: rgba(120,70,0,.15); color: #5a3308; }
+  html[data-theme="t5"] .remark-seat, html[data-theme="t6"] .remark-seat,
+  html[data-theme="t7"] .remark-seat, html[data-theme="t8"] .remark-seat { background: rgba(170,30,30,.15); color: #8a1a1a; }
+  html[data-theme="t5"] .remark-bike, html[data-theme="t6"] .remark-bike,
+  html[data-theme="t7"] .remark-bike, html[data-theme="t8"] .remark-bike { background: rgba(20,100,40,.15); color: #0f6b2a; }
+  html[data-theme="t5"] .remark-delay, html[data-theme="t6"] .remark-delay,
+  html[data-theme="t7"] .remark-delay, html[data-theme="t8"] .remark-delay { background: rgba(170,30,30,.20); color: #8a1a1a; }
   html[data-theme="t5"] .chip-reserved, html[data-theme="t6"] .chip-reserved,
-  html[data-theme="t7"] .chip-reserved, html[data-theme="t8"] .chip-reserved {
-    background: rgba(120,70,0,.18); color: #5a3308;
-    border-color: rgba(120,70,0,.35);
-  }
+  html[data-theme="t7"] .chip-reserved, html[data-theme="t8"] .chip-reserved { background: rgba(120,70,0,.18); color: #5a3308; border-color: rgba(120,70,0,.35); }
   html[data-theme="t5"] .chip-local, html[data-theme="t6"] .chip-local,
-  html[data-theme="t7"] .chip-local, html[data-theme="t8"] .chip-local {
-    background: rgba(7,58,112,.15); color: #073a70;
-    border-color: rgba(7,58,112,.35);
-  }
+  html[data-theme="t7"] .chip-local, html[data-theme="t8"] .chip-local { background: rgba(7,58,112,.15); color: #073a70; border-color: rgba(7,58,112,.35); }
   html[data-theme="t5"] .chip-express, html[data-theme="t6"] .chip-express,
-  html[data-theme="t7"] .chip-express, html[data-theme="t8"] .chip-express {
-    background: rgba(20,100,40,.15); color: #0f6b2a;
-    border-color: rgba(20,100,40,.35);
-  }
-  /* Badge in 車種 column */
+  html[data-theme="t7"] .chip-express, html[data-theme="t8"] .chip-express { background: rgba(20,100,40,.15); color: #0f6b2a; border-color: rgba(20,100,40,.35); }
   html[data-theme="t5"] .badge-reserved, html[data-theme="t6"] .badge-reserved,
-  html[data-theme="t7"] .badge-reserved, html[data-theme="t8"] .badge-reserved {
-    background: rgba(120,70,0,.18); color: #5a3308;
-  }
+  html[data-theme="t7"] .badge-reserved, html[data-theme="t8"] .badge-reserved { background: rgba(120,70,0,.18); color: #5a3308; }
   html[data-theme="t5"] .badge-express, html[data-theme="t6"] .badge-express,
-  html[data-theme="t7"] .badge-express, html[data-theme="t8"] .badge-express {
-    background: rgba(20,100,40,.18); color: #0f6b2a;
-  }
+  html[data-theme="t7"] .badge-express, html[data-theme="t8"] .badge-express { background: rgba(20,100,40,.18); color: #0f6b2a; }
   html[data-theme="t5"] .badge-local, html[data-theme="t6"] .badge-local,
-  html[data-theme="t7"] .badge-local, html[data-theme="t8"] .badge-local {
-    background: rgba(7,58,112,.15); color: #073a70;
-  }
-  /* Primary action button text on bright blue is unreadable; restore white */
+  html[data-theme="t7"] .badge-local, html[data-theme="t8"] .badge-local { background: rgba(7,58,112,.15); color: #073a70; }
   html[data-theme="t5"] .btn-primary, html[data-theme="t6"] .btn-primary,
-  html[data-theme="t7"] .btn-primary, html[data-theme="t8"] .btn-primary {
-    color: #fff;
-  }
+  html[data-theme="t7"] .btn-primary, html[data-theme="t8"] .btn-primary { color: #fff; }
 
-  /* Live board (station cards) — base CSS hard-codes dark colours that disappear on light themes */
-  html[data-theme="t5"] .station-card-header,
-  html[data-theme="t6"] .station-card-header,
-  html[data-theme="t7"] .station-card-header,
-  html[data-theme="t8"] .station-card-header {
-    background: var(--surface);
-    color: var(--fg);
-  }
-  html[data-theme="t5"] .stn-section-title,
-  html[data-theme="t6"] .stn-section-title,
-  html[data-theme="t7"] .stn-section-title,
-  html[data-theme="t8"] .stn-section-title,
-  html[data-theme="t5"] .stn-table th,
-  html[data-theme="t6"] .stn-table th,
-  html[data-theme="t7"] .stn-table th,
-  html[data-theme="t8"] .stn-table th {
-    color: var(--fg);
-  }
-  html[data-theme="t5"] .stn-table td,
-  html[data-theme="t6"] .stn-table td,
-  html[data-theme="t7"] .stn-table td,
-  html[data-theme="t8"] .stn-table td {
-    color: var(--fg);
-    border-bottom-color: var(--border);
-  }
-  html[data-theme="t5"] .stn-dir-row td,
-  html[data-theme="t6"] .stn-dir-row td,
-  html[data-theme="t7"] .stn-dir-row td,
-  html[data-theme="t8"] .stn-dir-row td {
-    color: #5a3308;
-  }
-  html[data-theme="t5"] .stn-dir-row.dir-down td,
-  html[data-theme="t6"] .stn-dir-row.dir-down td {
-    background: rgba(120,70,0,.18);
-  }
-  html[data-theme="t5"] .stn-dir-row.dir-up td,
-  html[data-theme="t6"] .stn-dir-row.dir-up td {
-    background: rgba(120,70,0,.28);
-  }
-  html[data-theme="t7"] .stn-dir-row.dir-down td,
-  html[data-theme="t8"] .stn-dir-row.dir-down td {
-    background: rgba(7,58,112,.18); color: #073a70;
-  }
-  html[data-theme="t7"] .stn-dir-row.dir-up td,
-  html[data-theme="t8"] .stn-dir-row.dir-up td {
-    background: rgba(7,58,112,.28); color: #073a70;
-  }
+  /* Live board (light themes) */
+  html[data-theme="t5"] .station-card-header, html[data-theme="t6"] .station-card-header,
+  html[data-theme="t7"] .station-card-header, html[data-theme="t8"] .station-card-header { background: var(--surface); color: var(--fg); }
+  html[data-theme="t5"] .stn-section-title, html[data-theme="t6"] .stn-section-title,
+  html[data-theme="t7"] .stn-section-title, html[data-theme="t8"] .stn-section-title,
+  html[data-theme="t5"] .stn-table th, html[data-theme="t6"] .stn-table th,
+  html[data-theme="t7"] .stn-table th, html[data-theme="t8"] .stn-table th { color: var(--fg); }
+  html[data-theme="t5"] .stn-table td, html[data-theme="t6"] .stn-table td,
+  html[data-theme="t7"] .stn-table td, html[data-theme="t8"] .stn-table td { color: var(--fg); border-bottom-color: var(--border); }
+  html[data-theme="t5"] .stn-dir-row td, html[data-theme="t6"] .stn-dir-row td,
+  html[data-theme="t7"] .stn-dir-row td, html[data-theme="t8"] .stn-dir-row td { color: #5a3308; }
+  html[data-theme="t5"] .stn-dir-row.dir-down td, html[data-theme="t6"] .stn-dir-row.dir-down td { background: rgba(120,70,0,.18); }
+  html[data-theme="t5"] .stn-dir-row.dir-up td, html[data-theme="t6"] .stn-dir-row.dir-up td { background: rgba(120,70,0,.28); }
+  html[data-theme="t7"] .stn-dir-row.dir-down td, html[data-theme="t8"] .stn-dir-row.dir-down td { background: rgba(7,58,112,.18); color: #073a70; }
+  html[data-theme="t7"] .stn-dir-row.dir-up td, html[data-theme="t8"] .stn-dir-row.dir-up td { background: rgba(7,58,112,.28); color: #073a70; }
   html[data-theme="t5"] .stn-label-from, html[data-theme="t6"] .stn-label-from,
-  html[data-theme="t7"] .stn-label-from, html[data-theme="t8"] .stn-label-from {
-    background: rgba(7,58,112,.18); color: #073a70;
-  }
+  html[data-theme="t7"] .stn-label-from, html[data-theme="t8"] .stn-label-from { background: rgba(7,58,112,.18); color: #073a70; }
   html[data-theme="t5"] .stn-label-to, html[data-theme="t6"] .stn-label-to,
-  html[data-theme="t7"] .stn-label-to, html[data-theme="t8"] .stn-label-to {
-    background: rgba(170,80,10,.18); color: #8a3a08;
-  }
+  html[data-theme="t7"] .stn-label-to, html[data-theme="t8"] .stn-label-to { background: rgba(170,80,10,.18); color: #8a3a08; }
   html[data-theme="t5"] .stn-delay-pos, html[data-theme="t6"] .stn-delay-pos,
-  html[data-theme="t7"] .stn-delay-pos, html[data-theme="t8"] .stn-delay-pos {
-    color: #8a1a1a;
-  }
+  html[data-theme="t7"] .stn-delay-pos, html[data-theme="t8"] .stn-delay-pos { color: #8a1a1a; }
   html[data-theme="t5"] .stn-delay-ok, html[data-theme="t6"] .stn-delay-ok,
-  html[data-theme="t7"] .stn-delay-ok, html[data-theme="t8"] .stn-delay-ok {
-    color: #0f6b2a;
-  }
+  html[data-theme="t7"] .stn-delay-ok, html[data-theme="t8"] .stn-delay-ok { color: #0f6b2a; }
 
-  /* Theme picker UI in header */
-  .theme-picker {
-    display:flex; align-items:center; gap:6px;
-    margin-top:6px;
+  /* index2: hide 到達站 board entirely (only show 出發站) */
+  #stn-win-to { display: none !important; }
+  .station-duo-outer { grid-template-columns: 1fr !important; }
+
+  /* "雙向版" link button — high-contrast on every theme */
+  #dual-link {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 16px;
+    border-radius: 14px;
+    background: #ffd24a;
+    color: #0a1e33 !important;
+    text-decoration: none;
+    letter-spacing: .04em;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    transition: background .15s, transform .15s;
   }
-  .theme-picker .tp-label {
-    font-size:10px; color:var(--fg-dim);
-    letter-spacing:.08em; text-transform:uppercase;
-  }
+  #dual-link:hover { background: #ffe680; transform: translateY(-1px); }
+
+  /* Theme picker UI */
+  .theme-picker { display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .theme-picker .tp-label { font-size:10px; color:var(--fg-dim); letter-spacing:.08em; text-transform:uppercase; }
   .theme-swatches { display:flex; gap:4px; }
   .theme-swatches button {
     width:18px; height:18px; border-radius:50%;
@@ -290,30 +170,11 @@
     transition:transform .15s, box-shadow .15s;
   }
   .theme-swatches button:hover { transform:scale(1.18); }
-  .theme-swatches button.active {
-    box-shadow:0 0 0 2px var(--gold);
-    transform:scale(1.12);
-  }
+  .theme-swatches button.active { box-shadow:0 0 0 2px var(--gold); transform:scale(1.12); }
   .sw-t1{background:#2e1a0d}.sw-t2{background:#2c241a}.sw-t3{background:#0d2540}.sw-t4{background:#15202f}
   .sw-t5{background:#fff2dc}.sw-t6{background:#fffaf0}.sw-t7{background:#f4f9ff}.sw-t8{background:#fbfdff}
-
-  /* Toggle switches */
-  .toggle-group { display:flex; align-items:center; gap:12px; margin-left:8px; }
-  .toggle-item { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--fg-dim); white-space:nowrap; }
-  .toggle-switch {
-    position:relative; width:36px; height:20px;
-    background:var(--border); border-radius:10px;
-    cursor:pointer; transition:background .2s;
-    border:none; padding:0;
-  }
-  .toggle-switch::after {
-    content:''; position:absolute; top:2px; left:2px;
-    width:16px; height:16px; border-radius:50%;
-    background:#fff; transition:transform .2s;
-  }
-  .toggle-switch.active { background:var(--gold); }
-  .toggle-switch.active::after { transform:translateX(16px); }
-</style></head>
+</style>
+</head>
 <body>
 
 <header>
@@ -383,17 +244,6 @@
   <button class="btn btn-live" id="live-btn">🟡 即時狀態</button>
 
   <button class="ctrl-stn-view-btn" id="stn-board-view-btn" style="display:none" title="切換顯示">🚏</button>
-
-  <div class="toggle-group">
-    <span class="toggle-item">
-      <button class="toggle-switch active" id="toggle-liveboard" title="顯示/隱藏即時看板"></button>
-      即時看板
-    </span>
-    <span class="toggle-item">
-      <button class="toggle-switch active" id="toggle-2way" title="顯示/隱藏到達站"></button>
-      雙向
-    </span>
-  </div>
 </div>
 
 <div id="station-live-wrap" style="display:none">
@@ -458,15 +308,6 @@
       <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
     </div>
   </div>
-  <div class="table-panel" id="panel-ba">
-    <div class="panel-header">
-      <div class="panel-title" id="title-ba">🟠 回程</div>
-      <span class="panel-count" id="count-ba">—</span>
-    </div>
-    <div class="table-scroll" id="scroll-ba">
-      <div class="empty-state"><div class="icon">🚉</div><span>尚無資料</span></div>
-    </div>
-  </div>
 </div>
 
 <footer>
@@ -480,11 +321,12 @@ const STATIONS = {{ stations | tojson }};
 let CITY_STATIONS = {{ station_groups | tojson }};
 </script>
 <script>
-  // Theme picker — persists choice in localStorage (key: tdx-theme2)
+  // Theme picker
   (function(){
     const KEY = 'tdx-theme2';
     const saved = localStorage.getItem(KEY) || 't3';
     document.documentElement.setAttribute('data-theme', saved);
+    localStorage.setItem('tdx_stn_board_view', '0'); // 0 = 出發 only
     document.addEventListener('DOMContentLoaded', () => {
       const wrap = document.getElementById('theme-swatches');
       if (!wrap) return;
@@ -504,70 +346,30 @@ let CITY_STATIONS = {{ station_groups | tojson }};
 </script>
 <script src="{{ url_for('static', filename='index.js') }}?v={{ cache_ver }}"></script>
 <script>
-  // Live boards auto-show + toggle controls
+  // Auto-show 出發站 live board on load + wire 即時 button.
   (function autoShowBoards() {
+    // Inject "雙向版" link banner via JS (bypasses Flask template cache)
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#1f6fb5;padding:8px 24px;text-align:center;border-bottom:2px solid #ffd24a';
+    banner.innerHTML = '<a id="dual-link" href="/" title="切換到雙向版（出發/回程兩個方向）">⇆ 雙向版（含回程列表）</a>';
+    const header = document.querySelector('header');
+    if (header && header.nextSibling) header.parentNode.insertBefore(banner, header.nextSibling);
+
     const wrap = document.getElementById('station-live-wrap');
-    const toggleLive = document.getElementById('toggle-liveboard');
-    const toggle2way = document.getElementById('toggle-2way');
-
-    // Restore saved state
-    const liveOn = localStorage.getItem('tdx-toggle-live') !== '0';
-    const twoOn  = localStorage.getItem('tdx-toggle-2way') !== '0';
-    const panelBa = document.getElementById('panel-ba');
-
-    if (wrap) wrap.style.display = liveOn ? 'block' : 'none';
-    if (!liveOn && toggleLive) toggleLive.classList.remove('active');
-    if (!twoOn && toggle2way) toggle2way.classList.remove('active');
-    if (panelBa) panelBa.style.display = twoOn ? '' : 'none';
-
-    // Sync stnBoardView with toggle state
-    if (typeof window.stnBoardView !== 'undefined') {
-      window.stnBoardView = twoOn ? 2 : 0;
-      localStorage.setItem('tdx_stn_board_view', window.stnBoardView);
-      if (typeof window._applyStnBoardView === 'function') window._applyStnBoardView();
-    }
-
-    // Toggle live board
-    if (toggleLive) toggleLive.addEventListener('click', () => {
-      const on = !toggleLive.classList.contains('active');
-      toggleLive.classList.toggle('active', on);
-      if (wrap) wrap.style.display = on ? 'block' : 'none';
-      localStorage.setItem('tdx-toggle-live', on ? '1' : '0');
-      if (on) { try { window.fetchStationBoards && window.fetchStationBoards(); } catch(e){} }
-    });
-
-    // Toggle 2-way (到達站)
-    if (toggle2way) toggle2way.addEventListener('click', () => {
-      const on = !toggle2way.classList.contains('active');
-      toggle2way.classList.toggle('active', on);
-      if (panelBa) panelBa.style.display = on ? '' : 'none';
-      window.stnBoardView = on ? 2 : 0;
-      localStorage.setItem('tdx_stn_board_view', window.stnBoardView);
-      localStorage.setItem('tdx-toggle-2way', on ? '1' : '0');
-      if (typeof window._applyStnBoardView === 'function') window._applyStnBoardView();
-    });
-
+    if (wrap) wrap.style.display = 'block';
     const fromSelEl = document.getElementById('from-sel');
     const toSelEl   = document.getElementById('to-sel');
     const liveBtn   = document.getElementById('live-btn');
-
     if (liveBtn) liveBtn.addEventListener('click', () => {
-      // Also turn on the live board toggle when clicking 即時狀態
-      if (toggleLive && !toggleLive.classList.contains('active')) {
-        toggleLive.classList.add('active');
-        if (wrap) wrap.style.display = 'block';
-        localStorage.setItem('tdx-toggle-live', '1');
-      }
       try { window.fetchStationBoards && window.fetchStationBoards(); } catch (e) {}
     });
-
     let tries = 0;
     function tryFetch() {
       tries++;
       const f = fromSelEl && fromSelEl.value;
       const t = toSelEl   && toSelEl.value;
       if (typeof window.fetchStationBoards === 'function' && f && t && f !== t) {
-        if (liveOn) { try { window.fetchStationBoards(); } catch (e) { console.error('boards err:', e); } }
+        try { window.fetchStationBoards(); } catch (e) { console.error('boards err:', e); }
         return;
       }
       if (tries < 30) setTimeout(tryFetch, 200);

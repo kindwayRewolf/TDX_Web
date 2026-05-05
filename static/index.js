@@ -700,6 +700,13 @@ document.getElementById('stn-board-view-btn').addEventListener('click', () => {
 });
 window.addEventListener('resize', _applyStnBoardView);
 
+// Expose for toggle controls in index.html
+window._applyStnBoardView = _applyStnBoardView;
+Object.defineProperty(window, 'stnBoardView', {
+  get() { return stnBoardView; },
+  set(v) { stnBoardView = v; }
+});
+
 function _sliceBoards(list, timeOf, hhmm) {
   const sorted = [...list].sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
   let idx = sorted.findIndex(t => timeOf(t) >= hhmm);
