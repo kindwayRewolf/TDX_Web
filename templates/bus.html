@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TDX Bus</title>
+<link rel="stylesheet" href="/static/bus.css">
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>TDX Bus</h1>
+  <button class="search-trigger" onclick="openSearch()">Search route...</button>
+  <button class="settings-btn" onclick="openSettings()">&#9881;</button>
+</div>
+
+<!-- Group tabs -->
+<div class="group-bar" id="groupBar"></div>
+
+<!-- Dashboard -->
+<div class="dashboard" id="dashboard"></div>
+
+<!-- Search overlay -->
+<div class="search-overlay" id="searchOverlay">
+  <div class="search-bar">
+    <button class="back-btn" onclick="closeSearch()">&#8592;</button>
+    <input type="text" id="searchInput" placeholder="Route number (e.g. 905, 307...)" autocomplete="off">
+  </div>
+  <div class="city-chips" id="cityChips"></div>
+  <div class="search-content" id="searchContent">
+    <div class="empty-state"><p>Type a route number to search</p></div>
+  </div>
+</div>
+
+<!-- Route detail overlay -->
+<div class="route-overlay" id="routeOverlay">
+  <div class="route-top">
+    <button class="back-btn" onclick="closeRoute()">&#8592;</button>
+    <h2 id="routeDetailName"></h2>
+    <div class="endpoints" id="routeDetailEndpoints"></div>
+  </div>
+  <div class="route-dir-tabs" id="routeDirTabs"></div>
+  <div class="route-stops" id="routeStops"></div>
+</div>
+
+<!-- Group picker popup -->
+<div class="popup-bg" id="groupPickerBg">
+  <div class="popup" id="groupPickerPopup">
+    <h3>Add to group</h3>
+    <div id="groupPickerList"></div>
+    <div class="popup-cancel" onclick="closeGroupPicker()">Cancel</div>
+  </div>
+</div>
+
+<!-- Settings popup -->
+<div class="popup-bg" id="settingsBg">
+  <div class="popup settings-popup">
+    <h3>Settings</h3>
+    <div class="setting-row">
+      <span>Auto-refresh</span>
+      <select id="refreshSelect" onchange="saveRefreshSetting()">
+        <option value="15000">15s</option>
+        <option value="30000">30s</option>
+        <option value="60000">60s</option>
+        <option value="0">Manual</option>
+      </select>
+    </div>
+    <h3 style="margin-top:16px;margin-bottom:8px">Groups</h3>
+    <div id="settingsGroupList"></div>
+    <button class="add-group-btn" onclick="addGroupFromSettings()">+ New Group</button>
+    <div class="popup-cancel" onclick="closeSettings()">Close</div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar">
+  <span id="statusText">Ready</span>
+  <span id="statusRight"></span>
+</div>
+
+<script src="/static/bus.js"></script>
+</body>
+</html>

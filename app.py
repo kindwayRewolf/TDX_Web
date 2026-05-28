@@ -11,6 +11,7 @@ import os
 import re
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -229,6 +230,9 @@ _fare_cache:        dict = {}      # {"{fc}_{tc}": {"fares": {...}, "fetched_at"
 _rain_cache:        dict = {}      # {"stations": [...], "fetched_at": float}
 _mrt_live_cache:    dict = {}      # {operator: {"boards": [...], "fetched_at": float}}
 _mrt_flt_cache:     dict = {}      # {operator: {"data": [...], "fetched_at": float}} — FirstLastTimetable
+_bus_routes_cache:  dict = {}      # {city: {"routes": [...], "fetched_at": float}}
+_bus_stops_cache:   dict = {}      # {"{city}_{route}": {"stops": [...], "fetched_at": float}}
+_bus_eta_cache:     dict = {}      # {"{city}_{route}": {"etas": [...], "fetched_at": float}}
 _cache_lock = threading.Lock()
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
@@ -243,6 +247,36 @@ FARE_CACHE_TTL        = 24 * 3600       # 24 hours  (fares rarely change)
 RAIN_CACHE_TTL        = 30 * 60         # 30 minutes (CWA data refresh interval)
 MRT_LIVE_CACHE_TTL    = 60              # 60 seconds (MRT LiveBoard refresh)
 MRT_FLT_CACHE_TTL     = 24 * 3600       # 24 hours (FirstLastTimetable rarely changes)
+BUS_ROUTES_CACHE_TTL  = 24 * 3600       # 24 hours (route list rarely changes)
+BUS_STOPS_CACHE_TTL   = 24 * 3600       # 24 hours (stop sequence rarely changes)
+BUS_ETA_CACHE_TTL     = 60              # 60 seconds (ETA data refreshes frequently)
+
+# ─── Bus city codes ────────────────────────────────────────────────────────
+_BUS_CITIES = {
+    "Taipei": "\u81fa\u5317\u5e02",
+    "NewTaipei": "\u65b0\u5317\u5e02",
+    "Taoyuan": "\u6843\u5712\u5e02",
+    "Taichung": "\u81fa\u4e2d\u5e02",
+    "Tainan": "\u81fa\u5357\u5e02",
+    "Kaohsiung": "\u9ad8\u96c4\u5e02",
+    "Keelung": "\u57fa\u9686\u5e02",
+    "Hsinchu": "\u65b0\u7af9\u5e02",
+    "HsinchuCounty": "\u65b0\u7af9\u7e23",
+    "MiaoliCounty": "\u82d7\u6817\u7e23",
+    "ChanghuaCounty": "\u5f70\u5316\u7e23",
+    "NantouCounty": "\u5357\u6295\u7e23",
+    "YunlinCounty": "\u96f2\u6797\u7e23",
+    "ChiayiCounty": "\u5609\u7fa9\u7e23",
+    "Chiayi": "\u5609\u7fa9\u5e02",
+    "PingtungCounty": "\u5c4f\u6771\u7e23",
+    "YilanCounty": "\u5b9c\u862d\u7e23",
+    "HualienCounty": "\u82b1\u84ee\u7e23",
+    "TaitungCounty": "\u81fa\u6771\u7e23",
+    "KinmenCounty": "\u91d1\u9580\u7e23",
+    "PenghuCounty": "\u6f8e\u6e56\u7e23",
+    "LienchiangCounty": "\u9023\u6c5f\u7e23",
+}
+_BUS_DEFAULT_CITIES = ["Taipei", "NewTaipei"]
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
 # Populated at startup by _load_seed_data() from seed_data.json,
@@ -1543,6 +1577,284 @@ def _get_mrt_first_last(op: str, station_id: str) -> list:
                 "last": last,
             })
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BUS API ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _bus_fetch_routes_for_city(city: str) -> list:
+    """Fetch all routes for a bus city (with 24h memory cache)."""
+    now = time.time()
+    with _cache_lock:
+        entry = _bus_routes_cache.get(city)
+    if entry and now - entry["fetched_at"] < BUS_ROUTES_CACHE_TTL:
+        return entry["routes"]
+
+    url = (
+        f"https://tdx.transportdata.tw/api/basic"
+        f"/v2/Bus/Route/City/{city}"
+        f"?$select=RouteUID,RouteID,RouteName,DepartureStopNameZh,DestinationStopNameZh"
+        f"&$format=JSON"
+    )
+    try:
+        data = api_get(url)
+    except Exception as e:
+        log.warning("Bus routes fetch failed for %s: %s", city, e)
+        return []
+
+    routes = []
+    for r in data if isinstance(data, list) else []:
+        routes.append({
+            "RouteUID": r.get("RouteUID", ""),
+            "RouteName": r.get("RouteName", {}).get("Zh_tw", ""),
+            "RouteNameEn": r.get("RouteName", {}).get("En", ""),
+            "Departure": r.get("DepartureStopNameZh", ""),
+            "Destination": r.get("DestinationStopNameZh", ""),
+        })
+
+    with _cache_lock:
+        _bus_routes_cache[city] = {"routes": routes, "fetched_at": time.time()}
+    log.info("Cached %d bus routes for %s", len(routes), city)
+    return routes
+
+
+def _bus_fetch_eta(city: str, route_name: str) -> list:
+    """Fetch ETA for a bus route (with 60s memory cache)."""
+    cache_key = f"{city}_{route_name}"
+    now = time.time()
+    with _cache_lock:
+        entry = _bus_eta_cache.get(cache_key)
+    if entry and now - entry["fetched_at"] < BUS_ETA_CACHE_TTL:
+        return entry["etas"]
+
+    url = (
+        f"https://tdx.transportdata.tw/api/basic"
+        f"/v2/Bus/EstimatedTimeOfArrival/City/{city}/{route_name}"
+        f"?$format=JSON"
+    )
+    data = api_get(url)
+    etas = []
+    for item in (data if isinstance(data, list) else []):
+        etas.append({
+            "StopUID": item.get("StopUID", ""),
+            "StopName": item.get("StopName", {}).get("Zh_tw", ""),
+            "Direction": item.get("Direction", -1),
+            "EstimateTime": item.get("EstimateTime"),
+            "StopStatus": item.get("StopStatus", -1),
+            "NextBusTime": item.get("NextBusTime"),
+            "IsLastBus": item.get("IsLastBus"),
+        })
+
+    with _cache_lock:
+        _bus_eta_cache[cache_key] = {"etas": etas, "fetched_at": time.time()}
+        # Evict stale entries
+        expired = [k for k, v in _bus_eta_cache.items() if now - v["fetched_at"] > BUS_ETA_CACHE_TTL * 3]
+        for k in expired:
+            del _bus_eta_cache[k]
+    return etas
+
+
+@app.route("/bus")
+def bus_page():
+    """Serve the bus dashboard page."""
+    return render_template("bus.html")
+
+
+@app.route("/api/bus/cities")
+def api_bus_cities():
+    """Return list of available bus cities."""
+    result = [{"City": k, "CityNameZH": v} for k, v in _BUS_CITIES.items()]
+    return jsonify(result)
+
+
+@app.route("/api/bus/search")
+def api_bus_search():
+    """Search bus routes across multiple cities.
+    Query params: q (required), cities (comma-separated, default Taipei,NewTaipei)"""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+
+    cities_param = request.args.get("cities", "").strip()
+    if cities_param:
+        cities = [c.strip() for c in cities_param.split(",") if c.strip() in _BUS_CITIES]
+    else:
+        cities = list(_BUS_DEFAULT_CITIES)
+    if not cities:
+        cities = list(_BUS_DEFAULT_CITIES)
+
+    q_lower = q.lower()
+    results = []
+
+    def _search_city(city):
+        all_routes = _bus_fetch_routes_for_city(city)
+        matched = [
+            r for r in all_routes
+            if q_lower in r["RouteName"].lower()
+            or q_lower in r.get("RouteNameEn", "").lower()
+        ]
+        matched.sort(key=lambda x: x["RouteName"])
+        return city, matched[:20]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {pool.submit(_search_city, c): c for c in cities}
+        for fut in as_completed(futures):
+            try:
+                city, matched = fut.result()
+                if matched:
+                    results.append({
+                        "City": city,
+                        "CityNameZH": _BUS_CITIES.get(city, city),
+                        "Routes": matched,
+                    })
+            except Exception as e:
+                log.warning("Bus search error for %s: %s", futures[fut], e)
+
+    # Keep default cities first
+    city_order = {c: i for i, c in enumerate(cities)}
+    results.sort(key=lambda x: city_order.get(x["City"], 999))
+    return jsonify(results)
+
+
+@app.route("/api/bus/stops")
+def api_bus_stops():
+    """Get stop sequence for a bus route (cached 24h).
+    Query params: city (required), route (required)"""
+    city = request.args.get("city", "").strip()
+    route_name = request.args.get("route", "").strip()
+    if not city or not route_name:
+        return jsonify({"error": "Missing 'city' or 'route' parameter"}), 400
+    if city not in _BUS_CITIES:
+        return jsonify({"error": "Invalid city"}), 400
+
+    cache_key = f"{city}_{route_name}"
+    now = time.time()
+    with _cache_lock:
+        entry = _bus_stops_cache.get(cache_key)
+    if entry and now - entry["fetched_at"] < BUS_STOPS_CACHE_TTL:
+        return jsonify({"stops": entry["stops"], "cached": True})
+
+    try:
+        url = (
+            f"https://tdx.transportdata.tw/api/basic"
+            f"/v2/Bus/DisplayStopOfRoute/City/{city}/{route_name}"
+            f"?$format=JSON"
+        )
+        data = api_get(url)
+        result = []
+        for direction_data in (data if isinstance(data, list) else []):
+            stops = []
+            for s in direction_data.get("Stops", []):
+                stops.append({
+                    "StopUID": s.get("StopUID", ""),
+                    "StopName": s.get("StopName", {}).get("Zh_tw", ""),
+                    "StopNameEn": s.get("StopName", {}).get("En", ""),
+                    "StopSequence": s.get("StopSequence", 0),
+                })
+            result.append({
+                "Direction": direction_data.get("Direction", 0),
+                "RouteName": direction_data.get("RouteName", {}).get("Zh_tw", ""),
+                "Stops": stops,
+            })
+
+        with _cache_lock:
+            _bus_stops_cache[cache_key] = {"stops": result, "fetched_at": time.time()}
+        return jsonify({"stops": result, "cached": False})
+    except requests.HTTPError as e:
+        return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        log.exception("Unexpected error in /api/bus/stops")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/bus/batch_eta", methods=["POST"])
+def api_bus_batch_eta():
+    """Batch ETA fetch for multiple bus stops across routes/cities.
+    Request body: [{city, routeName, direction, stopUID, stopName}]
+    Returns: [{city, routeName, direction, stopUID, stopName, EstimateTime, StopStatus, IsLastBus}]"""
+    try:
+        items = request.get_json(force=True)
+        if not isinstance(items, list):
+            return jsonify({"error": "Expected JSON array"}), 400
+
+        # Group by (city, routeName) to deduplicate API calls
+        route_groups = {}
+        for item in items:
+            key = (item.get("city", ""), item.get("routeName", ""))
+            if key[0] not in _BUS_CITIES:
+                continue
+            if key not in route_groups:
+                route_groups[key] = []
+            route_groups[key].append(item)
+
+        # Fetch ETA for each unique (city, route) in parallel
+        eta_cache_local = {}
+
+        def _fetch_group(key):
+            city, route_name = key
+            return key, _bus_fetch_eta(city, route_name)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {pool.submit(_fetch_group, k): k for k in route_groups}
+            for fut in as_completed(futures):
+                try:
+                    key, eta_list = fut.result()
+                    eta_cache_local[key] = eta_list
+                except Exception as e:
+                    log.warning("Batch ETA fetch error: %s", e)
+
+        # Match requested stops to ETA data
+        results = []
+        for item in items:
+            city = item.get("city", "")
+            route_name = item.get("routeName", "")
+            direction = item.get("direction")
+            stop_uid = item.get("stopUID", "")
+            key = (city, route_name)
+
+            eta_list = eta_cache_local.get(key, [])
+            match = None
+            for e in eta_list:
+                if e["StopUID"] == stop_uid and e["Direction"] == direction:
+                    match = e
+                    break
+
+            if match:
+                results.append({
+                    "city": city,
+                    "routeName": route_name,
+                    "direction": direction,
+                    "stopUID": stop_uid,
+                    "stopName": match.get("StopName", ""),
+                    "EstimateTime": match.get("EstimateTime"),
+                    "StopStatus": match.get("StopStatus", -1),
+                    "IsLastBus": match.get("IsLastBus"),
+                    "NextBusTime": match.get("NextBusTime"),
+                })
+            else:
+                results.append({
+                    "city": city,
+                    "routeName": route_name,
+                    "direction": direction,
+                    "stopUID": stop_uid,
+                    "stopName": item.get("stopName", ""),
+                    "EstimateTime": None,
+                    "StopStatus": -1,
+                    "IsLastBus": None,
+                    "NextBusTime": None,
+                })
+
+        return jsonify(results)
+    except requests.HTTPError as e:
+        return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        log.exception("Unexpected error in /api/bus/batch_eta")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/health")
