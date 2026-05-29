@@ -16,7 +16,7 @@ function loadData() {
   return {
     groups: [{ id: 'g1', name: 'My Stops', stops: [] }],
     activeGroupId: 'g1',
-    refreshInterval: 15000,
+    refreshInterval: 30000,
   };
 }
 
@@ -212,7 +212,7 @@ function formatEta2(r) {
 // ===== Auto-refresh =====
 function startRefresh() {
   stopRefresh();
-  var interval = appData.refreshInterval || 15000;
+  var interval = appData.refreshInterval || 30000;
   if (interval > 0) {
     refreshTimer = setInterval(fetchGroupEta, interval);
     document.getElementById('statusRight').textContent = 'Auto: ' + (interval / 1000) + 's';
@@ -441,7 +441,7 @@ window.pickGroup = function(gid) {
 
 // ===== Settings =====
 window.openSettings = function() {
-  document.getElementById('refreshSelect').value = String(appData.refreshInterval || 15000);
+  document.getElementById('refreshSelect').value = String(appData.refreshInterval || 30000);
   renderSettingsGroups();
   document.getElementById('settingsBg').classList.add('show');
 };
