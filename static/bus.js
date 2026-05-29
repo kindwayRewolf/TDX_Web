@@ -168,8 +168,10 @@ async function fetchGroupEta() {
       const el = document.getElementById('eta-' + i);
       if (!el) return;
       const f = formatEta(r);
+      const f2 = formatEta2(r);
       el.innerHTML = '<div class="dash-eta-text ' + f.cls + '">' + f.text + '</div>' +
-        (f.sub ? '<div class="dash-eta-sub">' + f.sub + '</div>' : '');
+        (f2 ? '<div class="dash-eta-sub eta-second">' + f2 + '</div>' :
+         f.sub ? '<div class="dash-eta-sub">' + f.sub + '</div>' : '');
     });
 
     document.getElementById('statusText').textContent = 'Updated: ' + new Date().toLocaleTimeString();
@@ -197,6 +199,14 @@ function formatEta(r) {
   if (sec <= 60) return { text: '\u5373\u5c07\u9032\u7ad9', cls: 'eta-c-arriving pulse', sub: 'Arriving' };
   if (sec <= 180) return { text: Math.ceil(sec / 60) + ' min', cls: 'eta-c-soon', sub: '' };
   return { text: Math.ceil(sec / 60) + ' min', cls: 'eta-c-normal', sub: '' };
+}
+
+function formatEta2(r) {
+  // Return formatted string for 2nd bus, or null if unavailable
+  if (!r || r.EstimateTime2 == null) return null;
+  var sec2 = r.EstimateTime2;
+  if (sec2 <= 60) return '2nd: arriving';
+  return '2nd: ~' + Math.ceil(sec2 / 60) + ' min';
 }
 
 // ===== Auto-refresh =====

@@ -1770,11 +1770,70 @@ def api_bus_stops():
         return jsonify({"error": "Internal server error"}), 500
 
 
+def _bus_estimate_2nd(eta_list: list, stops_data: list, direction: int,
+                      target_stop_uid: str, first_eta: int) -> int | None:
+    """Estimate 2nd bus arrival from earlier stops on the route.
+
+    When the 1st bus is close (< 15 min), it has likely passed stops 3-5
+    stations back. Those earlier stops' ETAs then represent the NEXT bus.
+    We add estimated inter-stop travel time to get 2nd bus arrival at target.
+    """
+    # Find stop sequence for this direction
+    stop_seq = None
+    for d in stops_data:
+        if d.get("Direction") == direction:
+            stop_seq = d.get("Stops", [])
+            break
+    if not stop_seq:
+        return None
+
+    # Sort by StopSequence
+    stop_seq = sorted(stop_seq, key=lambda s: s.get("StopSequence", 0))
+
+    # Find target stop index
+    target_idx = None
+    for i, s in enumerate(stop_seq):
+        if s["StopUID"] == target_stop_uid:
+            target_idx = i
+            break
+    if target_idx is None:
+        return None
+
+    # Build ETA lookup by StopUID for this direction
+    eta_by_uid = {}
+    for e in eta_list:
+        if e["Direction"] == direction:
+            uid = e["StopUID"]
+            if uid not in eta_by_uid:
+                eta_by_uid[uid] = e.get("EstimateTime")
+
+    # Look at stops 3-5 positions earlier
+    best_eta2 = None
+    for offset in range(3, 6):
+        earlier_idx = target_idx - offset
+        if earlier_idx < 0:
+            break
+        earlier_uid = stop_seq[earlier_idx]["StopUID"]
+        earlier_eta = eta_by_uid.get(earlier_uid)
+        if earlier_eta is None:
+            continue
+
+        # If earlier stop's ETA > first bus ETA at target, it's likely a 2nd bus
+        if earlier_eta > first_eta:
+            # Estimate travel time: ~90 sec per stop
+            travel_time = offset * 90
+            estimated_arrival = earlier_eta + travel_time
+            if best_eta2 is None or estimated_arrival < best_eta2:
+                best_eta2 = estimated_arrival
+
+    return best_eta2
+
+
 @app.route("/api/bus/batch_eta", methods=["POST"])
 def api_bus_batch_eta():
     """Batch ETA fetch for multiple bus stops across routes/cities.
     Request body: [{city, routeName, direction, stopUID, stopName}]
-    Returns: [{city, routeName, direction, stopUID, stopName, EstimateTime, StopStatus, IsLastBus}]"""
+    Returns: [{city, routeName, direction, stopUID, stopName, EstimateTime, StopStatus, IsLastBus, EstimateTime2}]"""
     try:
         items = request.get_json(force=True)
         if not isinstance(items, list):
@@ -1806,6 +1865,18 @@ def api_bus_batch_eta():
                 except Exception as e:
                     log.warning("Batch ETA fetch error: %s", e)
 
+        # Pre-fetch stop sequences for estimating 2nd bus
+        stops_cache_local = {}
+        for key in route_groups:
+            city_k, route_k = key
+            cache_key = f"{city_k}_{route_k}"
+            with _cache_lock:
+                entry = _bus_stops_cache.get(cache_key)
+            if entry:
+                stops_cache_local[key] = entry["stops"]
+            else:
+                stops_cache_local[key] = []
+
         # Match requested stops to ETA data
         results = []
         for item in items:
@@ -1816,13 +1887,26 @@ def api_bus_batch_eta():
             key = (city, route_name)
 
             eta_list = eta_cache_local.get(key, [])
-            match = None
-            for e in eta_list:
-                if e["StopUID"] == stop_uid and e["Direction"] == direction:
-                    match = e
-                    break
+            # Collect all matching records (multiple buses may approach)
+            matches = [e for e in eta_list
+                       if e["StopUID"] == stop_uid and e["Direction"] == direction]
+            matches.sort(key=lambda x: x.get("EstimateTime") if x.get("EstimateTime") is not None else 999999)
 
-            if match:
+            eta2 = None
+            if matches:
+                match = matches[0]
+                # Direct 2nd bus from API (multiple plates)
+                if len(matches) > 1:
+                    eta2 = matches[1].get("EstimateTime")
+
+                # Estimate 2nd bus from earlier stops when 1st bus < 15 min
+                first_eta = match.get("EstimateTime")
+                if eta2 is None and first_eta is not None and first_eta <= 900:
+                    eta2 = _bus_estimate_2nd(
+                        eta_list, stops_cache_local.get(key, []),
+                        direction, stop_uid, first_eta
+                    )
+
                 results.append({
                     "city": city,
                     "routeName": route_name,
@@ -1833,6 +1917,7 @@ def api_bus_batch_eta():
                     "StopStatus": match.get("StopStatus", -1),
                     "IsLastBus": match.get("IsLastBus"),
                     "NextBusTime": match.get("NextBusTime"),
+                    "EstimateTime2": eta2,
                 })
             else:
                 results.append({
@@ -1845,6 +1930,7 @@ def api_bus_batch_eta():
                     "StopStatus": -1,
                     "IsLastBus": None,
                     "NextBusTime": None,
+                    "EstimateTime2": None,
                 })
 
         return jsonify(results)

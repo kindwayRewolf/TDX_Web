@@ -50,6 +50,7 @@ button{font-family:inherit;cursor:pointer}
 .eta-c-normal{color:var(--green)}
 .eta-c-gray{color:var(--gray)}
 .eta-c-dim{color:var(--dim)}
+.eta-second{color:#5bc0de;font-size:11px;margin-top:2px}
 
 /* -- Search overlay -- */
 .search-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:none;flex-direction:column}
