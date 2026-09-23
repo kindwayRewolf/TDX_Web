@@ -331,7 +331,7 @@ _TRA_MRT_TRANSFER: dict[str, list[dict]] = {
 }
 
 # ─── CWA 降雨 API ─────────────────────────────────────────────────────────
-_CWA_API_KEY = os.environ.get("CWA_API_KEY", "")
+_CWA_API_KEY = os.environ.get("CWA_API_KEY", "").strip()
 _CWA_RAIN_URL = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001"
 
 # 台鐵站名 → CWA 氣象站搜尋關鍵字（僅需填寫無法直接對應的站）
@@ -357,6 +357,8 @@ def _cwa_fetch_rain_stations(force: bool = False) -> list:
                 and now - _rain_cache.get("fetched_at", 0) < RAIN_CACHE_TTL):
             return _rain_cache["stations"]
     if not _CWA_API_KEY:
+        with _cache_lock:
+            _rain_cache["last_error"] = "missing_key"
         return []
     try:
         r = requests.get(
@@ -366,15 +368,59 @@ def _cwa_fetch_rain_stations(force: bool = False) -> list:
             verify=True,
         )
         r.raise_for_status()
-        stations = r.json().get("records", {}).get("Station", [])
-    except Exception:
-        log.warning("CWA rain API fetch failed", exc_info=True)
+        payload = r.json()
+        stations = payload.get("records", {}).get("Station", [])
+        if not isinstance(stations, list) or not stations:
+            with _cache_lock:
+                _rain_cache["last_error"] = "empty_response"
+                return _rain_cache.get("stations", [])
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else 0
+        error_code = f"http_{status}"
+        log.warning("CWA rain API rejected request (HTTP %s)", status)
         with _cache_lock:
+            _rain_cache["last_error"] = error_code
+            return _rain_cache.get("stations", [])
+    except requests.Timeout:
+        log.warning("CWA rain API request timed out")
+        with _cache_lock:
+            _rain_cache["last_error"] = "timeout"
+            return _rain_cache.get("stations", [])
+    except requests.RequestException as exc:
+        error_code = f"request_{type(exc).__name__}"
+        log.warning("CWA rain API request failed (%s)", type(exc).__name__)
+        with _cache_lock:
+            _rain_cache["last_error"] = error_code
+            return _rain_cache.get("stations", [])
+    except (ValueError, AttributeError, TypeError) as exc:
+        error_code = f"invalid_response_{type(exc).__name__}"
+        log.warning("CWA rain API returned invalid data (%s)", type(exc).__name__)
+        with _cache_lock:
+            _rain_cache["last_error"] = error_code
             return _rain_cache.get("stations", [])
     with _cache_lock:
         _rain_cache["stations"] = stations
         _rain_cache["fetched_at"] = time.time()
+        _rain_cache["last_error"] = ""
     return stations
+
+
+def _cwa_rain_error_message(error_code: str) -> str:
+    if error_code == "http_401":
+        return "CWA rejected the API key (HTTP 401). Verify CWA_API_KEY in Render."
+    if error_code == "http_403":
+        return "CWA denied the request (HTTP 403). Check the API key permissions."
+    if error_code.startswith("http_"):
+        return f"CWA returned {error_code[5:]}. Check the key and CWA service status."
+    if error_code == "timeout":
+        return "The request to CWA timed out from the hosting service."
+    if error_code.startswith("request_"):
+        return f"The hosting service could not reach CWA ({error_code[8:]})."
+    if error_code.startswith("invalid_response_"):
+        return "CWA returned data in an unexpected format."
+    if error_code == "empty_response":
+        return "CWA returned no rainfall station records."
+    return "Check the hosting service logs for the CWA request failure."
 
 
 def _find_rain_for(name: str, stations: list) -> dict:
@@ -1460,7 +1506,9 @@ def api_rain_stations():
 
     stations = _cwa_fetch_rain_stations(force=request.args.get("refresh") == "1")
     if not stations:
-        return jsonify({"error": "CWA rainfall observations are unavailable"}), 502
+        with _cache_lock:
+            error_code = _rain_cache.get("last_error", "")
+        return jsonify({"error": _cwa_rain_error_message(error_code)}), 502
 
     periods = {
         "10min": "Past10Min",
