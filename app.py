@@ -121,9 +121,8 @@ TOKEN_URL = (
 class _KeyRateLimiter:
     """Sliding-window rate limiter: max 5 requests per 60 seconds per API key.
 
-    Thread-safe.  `acquire()` blocks until a slot is free, then claims it
-    atomically — so a request is never issued before a slot is guaranteed.
-    Works correctly with any number of concurrent threads.
+    Thread-safe. `try_acquire()` atomically claims a slot or immediately
+    reports that this key is rate-limited.
     """
     WINDOW  = 60.0   # seconds
     MAX_REQ = 5      # TDX free-plan limit per key
@@ -145,18 +144,15 @@ class _KeyRateLimiter:
             self._prune(now)
             return now if len(self._ts) < self.MAX_REQ else self._ts[0] + self.WINDOW
 
-    def acquire(self) -> None:
-        """Block until a slot is available, then claim it atomically."""
-        while True:
-            with self._lock:
-                now = time.time()
-                self._prune(now)
-                if len(self._ts) < self.MAX_REQ:
-                    self._ts.append(now)
-                    return
-                wait = self._ts[0] + self.WINDOW - now
-            # Sleep outside the lock so other threads can acquire concurrently.
-            time.sleep(min(wait, 1.0))
+    def try_acquire(self) -> bool:
+        """Claim a slot immediately, returning False when the key is limited."""
+        with self._lock:
+            now = time.time()
+            self._prune(now)
+            if len(self._ts) >= self.MAX_REQ:
+                return False
+            self._ts.append(now)
+            return True
 
     def mark_exhausted(self) -> None:
         """Force-fill the window so this key is unavailable for ~60 s.
@@ -729,8 +725,8 @@ def api_get(url: str) -> dict:
     Key selection strategy:
       - Always pick the key whose next available slot opens soonest.
       - Break ties by round-robin (_pool_index) so load spreads evenly.
-      - `acquire()` then blocks the calling thread until that slot is confirmed
-        (atomic claim).  This prevents 429s proactively instead of reacting to them.
+            - `try_acquire()` atomically claims an available slot without blocking a
+                request thread; if all keys are limited, fail fast so the route returns 503.
       - 429 is still handled as a safety net: `mark_exhausted()` forces a ~60 s
         cooldown on the offending key so the next retry uses a different one.
     """
@@ -742,17 +738,20 @@ def api_get(url: str) -> dict:
         # Tiebreak by distance from _pool_index (round-robin when all keys are free).
         with _pool_lock:
             start = _pool_index % len(_key_pool)
-        best_idx = min(
+        ordered_indices = sorted(
             range(len(_key_pool)),
             key=lambda i: (
                 _key_pool[i]["limiter"].next_available_at(),
                 (i - start) % len(_key_pool),   # round-robin tiebreaker
             ),
         )
+        best_idx = next(
+            (i for i in ordered_indices if _key_pool[i]["limiter"].try_acquire()),
+            None,
+        )
+        if best_idx is None:
+            raise RuntimeError("All TDX API keys are currently rate limited")
         key = _key_pool[best_idx]
-
-        # Block here until the chosen key has a free rate-limit slot.
-        key["limiter"].acquire()
 
         try:
             token = _get_token_for(key)
