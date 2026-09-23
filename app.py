@@ -16,11 +16,8 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import requests
-import urllib3
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 log = logging.getLogger(__name__)
 
@@ -364,7 +361,7 @@ def _cwa_fetch_rain_stations() -> list:
             _CWA_RAIN_URL,
             params={"Authorization": _CWA_API_KEY, "format": "JSON"},
             timeout=20,
-            verify=False,  # CWA cert missing Subject Key Identifier
+            verify=True,
         )
         r.raise_for_status()
         stations = r.json().get("records", {}).get("Station", [])
