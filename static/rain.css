@@ -108,7 +108,7 @@ a { color: inherit; }
 
 .rain-filters {
   display: grid;
-  grid-template-columns: minmax(145px, .8fr) minmax(145px, .8fr) minmax(180px, 1.1fr) minmax(240px, 1.6fr);
+  grid-template-columns: minmax(120px, .7fr) minmax(120px, .7fr) minmax(170px, 1fr) minmax(220px, 1.3fr) minmax(180px, 1fr);
   gap: 12px;
   padding: 18px 0 22px;
   border-bottom: 1px solid var(--rain-border);
@@ -192,7 +192,7 @@ a { color: inherit; }
   .rain-header { padding: 0 20px; }
   .rain-main { width: min(100% - 36px, 720px); padding-top: 26px; }
   .rain-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rain-search-field, .rain-station-field { grid-column: auto; }
+  .rain-search-field, .rain-station-field, .rain-history-field { grid-column: 1 / -1; }
 }
 
 @media (max-width: 560px) {
@@ -205,7 +205,7 @@ a { color: inherit; }
   .rain-intro h1 { font-size: 25px; }
   .rain-update-block { width: 100%; justify-content: space-between; }
   .rain-filters { grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 0 17px; }
-  .rain-search-field, .rain-station-field { grid-column: 1 / -1; }
+  .rain-search-field, .rain-station-field, .rain-history-field { grid-column: 1 / -1; }
   .rain-observation-heading { align-items: start; }
   .rain-observation-heading h2 { font-size: 17px; }
   .rain-observation-time { max-width: 48%; text-align: right; }

@@ -102,7 +102,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 # ─── Static asset cache buster ─────────────────────────────────────────────
 # Bump this string whenever JS/CSS changes to force browsers to refetch.
-_CACHE_VER = "20260506c"
+_CACHE_VER = "20260924a"
 
 # ─── TDX 認證 — Key pool ──────────────────────────────────────────────────
 # Supports multiple key pairs. Set in env:

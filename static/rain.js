@@ -1,8 +1,13 @@
 (() => {
   const AUTO_REFRESH_MS = 10 * 60 * 1000;
+  const HISTORY_LIMIT = 10;
+  const HISTORY_KEY = 'kindway_rain_station_history_v1';
   const STATION_KEY = 'kindway_rain_station_id';
+  const FILTERS_KEY = 'kindway_rain_filters_v1';
   const periods = ['10min', '1hr', '3hr', '6hr', '12hr', '24hr'];
   const stationSelect = document.getElementById('station-select');
+  const historySelect = document.getElementById('history-select');
+  const historyCount = document.getElementById('history-count');
   const countySelect = document.getElementById('county-select');
   const townSelect = document.getElementById('town-select');
   const searchInput = document.getElementById('station-search');
@@ -11,7 +16,48 @@
   const statusDot = document.getElementById('status-dot');
   const errorBox = document.getElementById('rain-error');
   const stationCount = document.getElementById('station-count');
-  const state = { stations: [], selectedId: localStorage.getItem(STATION_KEY) || '', refreshTimer: null, loading: false };
+  let savedFilters = {};
+  let savedHistory = [];
+  try {
+    savedFilters = JSON.parse(localStorage.getItem(FILTERS_KEY) || '{}');
+  } catch {}
+  try {
+    const parsedHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    if (Array.isArray(parsedHistory)) {
+      savedHistory = parsedHistory
+        .filter(item => item && typeof item.id === 'string')
+        .slice(0, HISTORY_LIMIT);
+    }
+  } catch {}
+  const state = {
+    stations: [],
+    history: savedHistory,
+    selectedId: savedFilters.stationId || localStorage.getItem(STATION_KEY) || '',
+    county: savedFilters.county || '',
+    town: savedFilters.town || '',
+    search: savedFilters.search || '',
+    refreshTimer: null,
+    loading: false,
+  };
+  searchInput.value = state.search;
+
+  function saveFilters() {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify({
+        stationId: state.selectedId,
+        county: state.county,
+        town: state.town,
+        search: state.search,
+      }));
+      if (state.selectedId) localStorage.setItem(STATION_KEY, state.selectedId);
+    } catch {}
+  }
+
+  function saveHistory() {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+    } catch {}
+  }
 
   function addOption(select, value, label) {
     const option = document.createElement('option');
@@ -28,20 +74,44 @@
     select.disabled = values.length === 0;
   }
 
-  function updateFilters() {
-    const previousCounty = countySelect.value;
-    const previousTown = townSelect.value;
+  function renderHistory() {
+    const available = state.history.filter(item => state.stations.some(station => station.id === item.id));
+    historySelect.replaceChildren();
+    addOption(historySelect, '', available.length ? '選擇最近測站' : '尚無使用紀錄');
+    for (const item of available) {
+      addOption(historySelect, item.id, `${item.name} · ${item.town} (${item.id})`);
+    }
+    historySelect.disabled = available.length === 0;
+    historyCount.textContent = available.length ? `${available.length}/${HISTORY_LIMIT}` : '';
+  }
+
+  function rememberStation(station) {
+    if (!station) return;
+    state.history = [
+      { id: station.id, name: station.name, county: station.county, town: station.town },
+      ...state.history.filter(item => item.id !== station.id),
+    ].slice(0, HISTORY_LIMIT);
+    saveHistory();
+    renderHistory();
+  }
+
+  function updateFilters(restoreSaved = false) {
+    const previousCounty = restoreSaved ? state.county : countySelect.value;
+    const previousTown = restoreSaved ? state.town : townSelect.value;
     const counties = [...new Set(state.stations.map(station => station.county))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
     replaceOptions(countySelect, '全部縣市', counties, previousCounty);
 
     const county = countySelect.value;
+    state.county = county;
     const towns = [...new Set(state.stations
       .filter(station => !county || station.county === county)
       .map(station => station.town))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
     replaceOptions(townSelect, '全部鄉鎮', towns, previousTown);
 
     const town = townSelect.value;
+    state.town = town;
     const query = searchInput.value.trim().toLocaleLowerCase();
+    state.search = searchInput.value;
     const filtered = state.stations.filter(station => {
       if (county && station.county !== county) return false;
       if (town && station.town !== town) return false;
@@ -62,11 +132,11 @@
     stationSelect.value = retained;
     state.selectedId = retained;
     if (retained) {
-      localStorage.setItem(STATION_KEY, retained);
       renderStation(state.stations.find(station => station.id === retained));
     } else {
       renderStation(null);
     }
+    saveFilters();
   }
 
   function formatAmount(value) {
@@ -114,7 +184,8 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       state.stations = Array.isArray(data.stations) ? data.stations : [];
-      updateFilters();
+      updateFilters(true);
+      renderHistory();
       for (const control of [countySelect, townSelect, searchInput]) control.disabled = state.stations.length === 0;
       refreshButton.disabled = false;
       const refreshedAt = data.fetched_at ? new Date(data.fetched_at * 1000) : new Date();
@@ -134,13 +205,27 @@
     }
   }
 
-  countySelect.addEventListener('change', updateFilters);
-  townSelect.addEventListener('change', updateFilters);
-  searchInput.addEventListener('input', updateFilters);
+  countySelect.addEventListener('change', () => updateFilters());
+  townSelect.addEventListener('change', () => updateFilters());
+  searchInput.addEventListener('input', () => updateFilters());
   stationSelect.addEventListener('change', () => {
     state.selectedId = stationSelect.value;
-    if (state.selectedId) localStorage.setItem(STATION_KEY, state.selectedId);
-    renderStation(state.stations.find(station => station.id === state.selectedId));
+    const selectedStation = state.stations.find(station => station.id === state.selectedId);
+    renderStation(selectedStation);
+    rememberStation(selectedStation);
+    saveFilters();
+  });
+  historySelect.addEventListener('change', () => {
+    const station = state.stations.find(item => item.id === historySelect.value);
+    if (!station) return;
+    state.county = station.county;
+    state.town = station.town;
+    state.search = '';
+    searchInput.value = '';
+    state.selectedId = station.id;
+    updateFilters(true);
+    rememberStation(station);
+    historySelect.value = '';
   });
   refreshButton.addEventListener('click', () => loadStations(true));
   window.addEventListener('beforeunload', () => {
