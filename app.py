@@ -386,6 +386,25 @@ def _cwa_fetch_rain_stations(force: bool = False) -> list:
         with _cache_lock:
             _rain_cache["last_error"] = "timeout"
             return _rain_cache.get("stations", [])
+    except requests.exceptions.SSLError as exc:
+        details = " ".join(str(arg) for arg in exc.args).lower()
+        verify_phrases = (
+            "certificate verify failed",
+            "cert_verify_failed",
+            "unable to get local issuer certificate",
+            "self-signed certificate",
+            "hostname mismatch",
+            "certificate has expired",
+        )
+        error_code = (
+            "tls_certificate_verification"
+            if any(phrase in details for phrase in verify_phrases)
+            else "tls_handshake"
+        )
+        log.warning("CWA TLS request failed (%s)", error_code)
+        with _cache_lock:
+            _rain_cache["last_error"] = error_code
+            return _rain_cache.get("stations", [])
     except requests.RequestException as exc:
         error_code = f"request_{type(exc).__name__}"
         log.warning("CWA rain API request failed (%s)", type(exc).__name__)
@@ -414,6 +433,10 @@ def _cwa_rain_error_message(error_code: str) -> str:
         return f"CWA returned {error_code[5:]}. Check the key and CWA service status."
     if error_code == "timeout":
         return "The request to CWA timed out from the hosting service."
+    if error_code == "tls_certificate_verification":
+        return "Render cannot verify CWA's TLS certificate chain. Check the CA trust chain in the hosting image."
+    if error_code == "tls_handshake":
+        return "The TLS handshake with CWA failed from the hosting service. Check the CWA endpoint and outbound TLS support."
     if error_code.startswith("request_"):
         return f"The hosting service could not reach CWA ({error_code[8:]})."
     if error_code.startswith("invalid_response_"):
