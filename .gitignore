@@ -10,6 +10,7 @@
 **/Conf/
 **/Binary/
 **/Backup/
+**/.venv/
 
 **/*.log
 **/*.ini

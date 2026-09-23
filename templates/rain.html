@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#071720">
+  <title>全台雨量觀測 | 台鐵時刻表</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='rain.css') }}?v={{ cache_ver }}">
+</head>
+<body>
+  <header class="rain-header">
+    <a class="rain-back" href="/" aria-label="返回台鐵時刻表"><span aria-hidden="true">←</span> 時刻表</a>
+    <a class="rain-brand" href="/" aria-label="Kindway 台鐵時刻表首頁">
+      <span class="rain-brand-mark" aria-hidden="true">雨</span>
+      <span class="rain-brand-copy"><strong>KINDWAY</strong><small>TAIWAN RAILWAY</small></span>
+    </a>
+    <a class="rain-source" href="https://www.cwa.gov.tw/" target="_blank" rel="noopener">中央氣象署資料</a>
+  </header>
+
+  <main class="rain-main">
+    <section class="rain-intro" aria-labelledby="page-title">
+      <div>
+        <p class="rain-eyebrow">CWA AUTOMATIC RAIN GAUGES</p>
+        <h1 id="page-title">全台雨量觀測</h1>
+        <p class="rain-subtitle">選擇測站，查看近 10 分鐘即時雨量與各時段累積量。</p>
+      </div>
+      <div class="rain-update-block">
+        <div class="rain-live-status"><span class="rain-status-dot" id="status-dot"></span><span id="rain-status" role="status">正在載入測站資料…</span></div>
+        <button class="rain-refresh" id="refresh-btn" type="button" title="立即更新雨量資料" aria-label="立即更新雨量資料" disabled><span aria-hidden="true">↻</span> 更新</button>
+      </div>
+    </section>
+
+    <section class="rain-filters" aria-label="選擇雨量站">
+      <div class="rain-filter-field">
+        <label for="county-select">縣市</label>
+        <select id="county-select" disabled><option value="">全部縣市</option></select>
+      </div>
+      <div class="rain-filter-field">
+        <label for="town-select">鄉鎮市區</label>
+        <select id="town-select" disabled><option value="">全部鄉鎮</option></select>
+      </div>
+      <div class="rain-filter-field rain-search-field">
+        <label for="station-search">搜尋站名或代碼</label>
+        <input id="station-search" type="search" placeholder="輸入測站名稱" autocomplete="off" disabled>
+      </div>
+      <div class="rain-filter-field rain-station-field">
+        <label for="station-select">雨量站 <span id="station-count"></span></label>
+        <select id="station-select" disabled><option value="">載入中…</option></select>
+      </div>
+    </section>
+
+    <div class="rain-error" id="rain-error" role="alert" hidden></div>
+
+    <section class="rain-observation" aria-labelledby="selected-station-name">
+      <div class="rain-observation-heading">
+        <div>
+          <p class="rain-location" id="selected-location">尚未選擇測站</p>
+          <h2 id="selected-station-name">雨量觀測</h2>
+        </div>
+        <div class="rain-observation-time"><span>觀測時間</span><time id="observation-time">—</time></div>
+      </div>
+
+      <div class="rain-primary-metrics">
+        <article class="rain-metric rain-current-metric">
+          <div class="rain-metric-label"><span class="rain-metric-icon" aria-hidden="true">◉</span><span>即時雨量 <small>近 10 分鐘</small></span></div>
+          <div class="rain-measure"><strong id="rain-10min">—</strong><span>mm</span></div>
+          <p>短時段降雨觀測</p>
+        </article>
+        <article class="rain-metric rain-daily-metric">
+          <div class="rain-metric-label"><span class="rain-metric-icon" aria-hidden="true">∑</span><span>累積雨量 <small>近 24 小時</small></span></div>
+          <div class="rain-measure"><strong id="rain-24hr">—</strong><span>mm</span></div>
+          <p>過去 24 小時累積觀測</p>
+        </article>
+      </div>
+
+      <div class="rain-accumulation-heading">
+        <div><p class="rain-eyebrow">ROLLING TOTALS</p><h3>時段累積</h3></div>
+        <span>單位：毫米</span>
+      </div>
+      <div class="rain-accumulation-grid">
+        <article class="rain-period"><span>近 1 小時</span><strong id="rain-1hr">—</strong><small>mm</small></article>
+        <article class="rain-period"><span>近 3 小時</span><strong id="rain-3hr">—</strong><small>mm</small></article>
+        <article class="rain-period"><span>近 6 小時</span><strong id="rain-6hr">—</strong><small>mm</small></article>
+        <article class="rain-period"><span>近 12 小時</span><strong id="rain-12hr">—</strong><small>mm</small></article>
+      </div>
+    </section>
+
+    <footer class="rain-footer">
+      <span>資料來源：<a href="https://opendata.cwa.gov.tw/" target="_blank" rel="noopener">中央氣象署開放資料</a></span>
+      <span>雨量為測站觀測值；累積時段採滾動計算。</span>
+      <span id="server-updated"></span>
+    </footer>
+  </main>
+  <script src="{{ url_for('static', filename='rain.js') }}?v={{ cache_ver }}"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@ Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 import collections
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -237,7 +238,7 @@ TRAINLIVE_CACHE_TTL   = LIVE_CACHE_TTL
 ALERT_CACHE_TTL       = 15 * 60         # 15 minutes
 NEWS_CACHE_TTL        = 60 * 60         # 1 hour
 FARE_CACHE_TTL        = 24 * 3600       # 24 hours  (fares rarely change)
-RAIN_CACHE_TTL        = 30 * 60         # 30 minutes (CWA data refresh interval)
+RAIN_CACHE_TTL        = 10 * 60         # 10 minutes (CWA rainfall refresh interval)
 MRT_LIVE_CACHE_TTL    = 60              # 60 seconds (MRT LiveBoard refresh)
 MRT_FLT_CACHE_TTL     = 24 * 3600       # 24 hours (FirstLastTimetable rarely changes)
 BUS_ROUTES_CACHE_TTL  = 24 * 3600       # 24 hours (route list rarely changes)
@@ -348,11 +349,12 @@ _TRAIN_TO_AREA: dict[str, str] = {
 }
 
 
-def _cwa_fetch_rain_stations() -> list:
+def _cwa_fetch_rain_stations(force: bool = False) -> list:
     """Fetch all CWA automated rain station data, cached for RAIN_CACHE_TTL."""
     now = time.time()
     with _cache_lock:
-        if _rain_cache.get("stations") and (now - _rain_cache.get("fetched_at", 0) < RAIN_CACHE_TTL):
+        if (not force and _rain_cache.get("stations")
+                and now - _rain_cache.get("fetched_at", 0) < RAIN_CACHE_TTL):
             return _rain_cache["stations"]
     if not _CWA_API_KEY:
         return []
@@ -975,6 +977,12 @@ def index():
                            cache_ver=_CACHE_VER)
 
 
+@app.route("/Rain")
+@app.route("/rain")
+def rain_page():
+    return render_template("rain.html", cache_ver=_CACHE_VER)
+
+
 @app.route("/index2.html")
 def index2():
     stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1),
@@ -1442,6 +1450,60 @@ def api_rain():
         rain_to["name"] = to_name
         result["to"] = rain_to
     return jsonify(result)
+
+
+@app.route("/api/rain/stations")
+def api_rain_stations():
+    """Return CWA rainfall observations for the station picker and dashboard."""
+    if not _CWA_API_KEY:
+        return jsonify({"error": "CWA_API_KEY is not configured"}), 503
+
+    stations = _cwa_fetch_rain_stations(force=request.args.get("refresh") == "1")
+    if not stations:
+        return jsonify({"error": "CWA rainfall observations are unavailable"}), 502
+
+    periods = {
+        "10min": "Past10Min",
+        "1hr": "Past1hr",
+        "3hr": "Past3hr",
+        "6hr": "Past6hr",
+        "12hr": "Past12hr",
+        "24hr": "Past24hr",
+    }
+
+    def _amount(station: dict, key: str) -> float | None:
+        value = (station.get("RainfallElement") or {}).get(key, {}).get("Precipitation")
+        try:
+            amount = float(value)
+        except (ValueError, TypeError):
+            return None
+        if not math.isfinite(amount) or amount < -9990:
+            return None
+        return round(amount, 1)
+
+    items = []
+    for station in stations:
+        station_id = str(station.get("StationId") or station.get("StationID") or "").strip()
+        if not station_id:
+            continue
+        geo = station.get("GeoInfo") or {}
+        station_name = station.get("StationName") or "未命名測站"
+        if isinstance(station_name, dict):
+            station_name = station_name.get("Zh_tw") or station_name.get("En") or "未命名測站"
+        rainfall = station.get("RainfallElement") or {}
+        items.append({
+            "id": station_id,
+            "name": station_name,
+            "county": geo.get("CountyName") or "未知",
+            "town": geo.get("TownName") or "未知",
+            "obs_time": (station.get("ObsTime") or {}).get("DateTime", ""),
+            "rainfall": {label: _amount(station, field) for label, field in periods.items()},
+        })
+
+    items.sort(key=lambda item: (item["county"], item["town"], item["name"]))
+    with _cache_lock:
+        fetched_at = _rain_cache.get("fetched_at", 0)
+    return jsonify({"stations": items, "fetched_at": fetched_at})
 
 
 @app.route("/api/mrt/liveboard")
