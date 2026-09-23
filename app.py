@@ -315,7 +315,7 @@ _HIDDEN_STATION_IDS: set[str] = {
     "5999",   # 潮州基地  — rolling-stock depot stop, not a regular passenger station
 }
 
-# ─── TRA↔MRT 轉乘站對照（台北捷運 TRTC）────────────────────────────────────
+# ─── TRA↔MRT 轉乘站對照（台北捷運 TRTC / 高雄捷運 KRTC）────────────────────
 # TRA station code → list of connected MRT lines + station info
 _TRA_MRT_TRANSFER: dict[str, list[dict]] = {
     "0980": [{"line": "BL", "line_name": "板南線", "station": "BL22", "mrt_name": "南港"}],
@@ -326,7 +326,7 @@ _TRA_MRT_TRANSFER: dict[str, list[dict]] = {
     ],
     "1010": [{"line": "BL", "line_name": "板南線", "station": "BL10", "mrt_name": "龍山寺"}],
     "1020": [{"line": "BL", "line_name": "板南線", "station": "BL07", "mrt_name": "板橋"}],
-    "4340": [{"line": "R",  "line_name": "紅線",   "station": "R16",  "mrt_name": "左營/高鐵"}],
+    "4340": [{"operator": "KRTC", "line": "R", "line_name": "紅線", "station": "R16", "mrt_name": "左營/高鐵"}],
 }
 
 # ─── CWA 降雨 API ─────────────────────────────────────────────────────────
@@ -1446,18 +1446,13 @@ def api_rain():
 
 @app.route("/api/mrt/liveboard")
 def api_mrt_liveboard():
-    """Return MRT live arrivals for a given station ID (e.g., G19, BL12).
-    Fetches all TRTC LiveBoard data (cached 60s), filters to requested station."""
+    """Return MRT live arrivals for an operator and station ID."""
     station_id = request.args.get("station", "").strip().upper()
     if not station_id:
         return jsonify({"error": "Missing 'station' parameter"}), 400
-
-    # Determine operator from station ID prefix
-    op = "TRTC"  # Default: Taipei Metro (covers BL, R, G, O, BR, Y)
-    if station_id.startswith("R") and len(station_id) <= 4:
-        # Could be KRTC red line if station code is like R16
-        # Check if it's in our TRA-MRT transfer map for KRTC
-        pass  # For now all mapped stations are TRTC or handled below
+    op = request.args.get("operator", "TRTC").strip().upper()
+    if op not in {"TRTC", "KRTC"}:
+        return jsonify({"error": "Invalid MRT operator"}), 400
 
     # Check cache
     now = time.time()
@@ -1529,7 +1524,8 @@ def api_mrt_liveboard():
     if not trains:
         first_last = _get_mrt_first_last(op, norm_sta)
 
-    return jsonify({"station": station_id, "trains": trains, "first_last": first_last})
+    return jsonify({"station": station_id, "operator": op,
+                    "trains": trains, "first_last": first_last})
 
 
 def _get_mrt_first_last(op: str, station_id: str) -> list:

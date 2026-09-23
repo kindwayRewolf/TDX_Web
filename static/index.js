@@ -915,25 +915,28 @@ async function fetchMrtLive(fromCode, toCode) {
   const toMrt   = STATION_MAP.get(toCode)?.mrt;
   if (!fromMrt && !toMrt) return;
 
-  const fetches = [];
-  const mrtStations = new Set();
+  const mrtStations = new Map();
+  const addMrtStation = m => {
+    const operator = m.operator || 'TRTC';
+    mrtStations.set(`${operator}:${m.station}`, { station: m.station, operator });
+  };
 
   // Collect unique MRT station IDs to fetch
-  if (fromMrt) fromMrt.forEach(m => mrtStations.add(m.station));
-  if (toMrt)   toMrt.forEach(m => mrtStations.add(m.station));
+  if (fromMrt) fromMrt.forEach(addMrtStation);
+  if (toMrt)   toMrt.forEach(addMrtStation);
 
   try {
     const results = await Promise.allSettled(
-      [...mrtStations].map(sid =>
-        fetch(`/api/mrt/liveboard?station=${sid}`).then(r => r.json())
+      [...mrtStations.values()].map(({ station, operator }) =>
+        fetch(`/api/mrt/liveboard?station=${encodeURIComponent(station)}&operator=${encodeURIComponent(operator)}`).then(r => r.json())
       )
     );
 
-    // Build map: stationId → {trains, first_last}
+    // Build map by operator and station because station IDs can overlap.
     const mrtData = {};
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value.station) {
-        mrtData[r.value.station] = {
+        mrtData[`${r.value.operator}:${r.value.station}`] = {
           trains: r.value.trains || [],
           first_last: r.value.first_last || [],
         };
@@ -971,7 +974,7 @@ function renderMrtPanel(wrapId, mrtList, mrtData) {
   let rows = '';
   let hasLive = false;
   for (const m of mrtList) {
-    const info = mrtData[m.station] || { trains: [], first_last: [] };
+    const info = mrtData[`${m.operator || 'TRTC'}:${m.station}`] || { trains: [], first_last: [] };
     const trains = info.trains;
     const firstLast = info.first_last;
 
