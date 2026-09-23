@@ -365,7 +365,7 @@ def _cwa_fetch_rain_stations(force: bool = False) -> list:
             _CWA_RAIN_URL,
             params={"Authorization": _CWA_API_KEY, "format": "JSON"},
             timeout=20,
-            verify=True,
+            verify=False,
         )
         r.raise_for_status()
         payload = r.json()
