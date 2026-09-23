@@ -413,13 +413,13 @@ function renderTable(scrollEl, trains, titleEl, countEl, fromName, toName, isAB,
     const bikeTag = hasBike ? '<span class="remark-tag remark-bike">\ud83d\udeb2</span>' : '';
     const remarkHtml = bikeTag + remarkTags(t.remark);
     const fare = getFare(t);
-    const fareHtml = fare ? `$${fare}` : '';
-    return `<tr class="${trClass}" data-dep="${t.dep}" data-train-no="${escHtml(t.train_no)}">
+    const fareHtml = fare ? `$${escHtml(fare)}` : '';
+    return `<tr class="${trClass}" data-dep="${escHtml(t.dep)}" data-train-no="${escHtml(t.train_no)}">
       <td><span class="badge ${badgeClass}">${escHtml(t.train_type)}</span></td>
       <td class="train-no">${escHtml(t.train_no)}</td>
-      <td class="time-dep">${t.dep}</td>
-      <td class="time-arr">${t.arr}</td>
-      <td class="duration">${t.duration}</td>
+      <td class="time-dep">${escHtml(t.dep)}</td>
+      <td class="time-arr">${escHtml(t.arr)}</td>
+      <td class="duration">${escHtml(t.duration)}</td>
       <td class="fare">${fareHtml}</td>
       <td class="left remark">${remarkHtml}</td>
     </tr>`;
@@ -994,7 +994,7 @@ function renderMrtPanel(wrapId, mrtList, mrtData) {
         const lineCell = i === 0
           ? `<td class="mrt-line-cell mrt-${m.line}" rowspan="${firstLast.length}">${m.station}</td>`
           : '';
-        rows += `<tr>${lineCell}<td>${escHtml(fl.destination)}</td><td class="mrt-flt">首 ${fl.first} / 末 ${fl.last}</td></tr>`;
+        rows += `<tr>${lineCell}<td>${escHtml(fl.destination)}</td><td class="mrt-flt">首 ${escHtml(fl.first)} / 末 ${escHtml(fl.last)}</td></tr>`;
       }
     } else {
       rows += `<tr><td class="mrt-line-cell mrt-${m.line}">${m.station}</td><td>${m.line_name}</td><td style="color:var(--fg-dim)">無資料</td></tr>`;
