@@ -15,6 +15,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -228,6 +229,21 @@ _bus_routes_cache:  dict = {}      # {city: {"routes": [...], "fetched_at": floa
 _bus_stops_cache:   dict = {}      # {"{city}_{route}": {"stops": [...], "fetched_at": float}}
 _bus_eta_cache:     dict = {}      # {"{city}_{route}": {"etas": [...], "fetched_at": float}}
 _cache_lock = threading.Lock()
+_RAIN_TIMEZONE = ZoneInfo("Asia/Taipei")
+_rain_api_call_date = ""
+_rain_api_call_count = 0
+
+
+def _rain_api_calls_today(increment: bool = False) -> int:
+    global _rain_api_call_date, _rain_api_call_count
+    today = datetime.now(_RAIN_TIMEZONE).date().isoformat()
+    with _cache_lock:
+        if _rain_api_call_date != today:
+            _rain_api_call_date = today
+            _rain_api_call_count = 0
+        if increment:
+            _rain_api_call_count += 1
+        return _rain_api_call_count
 
 OD_CACHE_TTL          = 30 * 60          # 30 minutes  (matches client TTL)
 GENERAL_CACHE_TTL     = 12 * 3600        # 12 hours    (general timetable rarely changes)
@@ -361,6 +377,7 @@ def _cwa_fetch_rain_stations(force: bool = False) -> list:
             _rain_cache["last_error"] = "missing_key"
         return []
     try:
+        _rain_api_calls_today(increment=True)
         r = requests.get(
             _CWA_RAIN_URL,
             params={"Authorization": _CWA_API_KEY, "format": "JSON"},
@@ -1525,13 +1542,13 @@ def api_rain():
 def api_rain_stations():
     """Return CWA rainfall observations for the station picker and dashboard."""
     if not _CWA_API_KEY:
-        return jsonify({"error": "CWA_API_KEY is not configured"}), 503
+        return jsonify({"error": "CWA_API_KEY is not configured", "api_calls_today": _rain_api_calls_today()}), 503
 
     stations = _cwa_fetch_rain_stations(force=request.args.get("refresh") == "1")
     if not stations:
         with _cache_lock:
             error_code = _rain_cache.get("last_error", "")
-        return jsonify({"error": _cwa_rain_error_message(error_code)}), 502
+        return jsonify({"error": _cwa_rain_error_message(error_code), "api_calls_today": _rain_api_calls_today()}), 502
 
     periods = {
         "10min": "Past10Min",
@@ -1574,7 +1591,7 @@ def api_rain_stations():
     items.sort(key=lambda item: (item["county"], item["town"], item["name"]))
     with _cache_lock:
         fetched_at = _rain_cache.get("fetched_at", 0)
-    return jsonify({"stations": items, "fetched_at": fetched_at})
+    return jsonify({"stations": items, "fetched_at": fetched_at, "api_calls_today": _rain_api_calls_today()})
 
 
 @app.route("/api/mrt/liveboard")

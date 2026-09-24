@@ -16,6 +16,7 @@
   const statusDot = document.getElementById('status-dot');
   const errorBox = document.getElementById('rain-error');
   const stationCount = document.getElementById('station-count');
+  const apiCallCount = document.getElementById('api-call-count');
   let savedFilters = {};
   let savedHistory = [];
   try {
@@ -182,6 +183,8 @@
       const url = force ? '/api/rain/stations?refresh=1' : '/api/rain/stations';
       const response = await fetch(url, { cache: 'no-store' });
       const data = await response.json();
+      const callsToday = Number(data.api_calls_today);
+      if (Number.isFinite(callsToday)) apiCallCount.textContent = `今日 CWA API 呼叫：${callsToday} 次`;
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       state.stations = Array.isArray(data.stations) ? data.stations : [];
       updateFilters(true);
