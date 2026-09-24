@@ -147,6 +147,23 @@
       </div>
     </section>
 
+    <section class="rain-api-access" aria-labelledby="rain-api-title">
+      <div class="rain-api-intro">
+        <p class="rain-eyebrow">JSON ENDPOINTS</p>
+        <h2 id="rain-api-title">直接讀取雨量資料</h2>
+        <p>開啟連結即可取得 JSON，不必解析此頁面。</p>
+      </div>
+      <div class="rain-api-link-list">
+        <a href="{{ url_for('api_rain') }}" target="_blank" rel="noopener"><span>全部測站</span><code>/api/rain</code></a>
+        <a href="{{ url_for('api_rain', station='C0AH70') }}" target="_blank" rel="noopener"><span>松山</span><code>C0AH70</code></a>
+        <a href="{{ url_for('api_rain', station='CAA030') }}" target="_blank" rel="noopener"><span>國三 S010K</span><code>CAA030</code></a>
+        <a href="{{ url_for('api_rain', station='C0D590') }}" target="_blank" rel="noopener"><span>新豐</span><code>C0D590</code></a>
+        <a href="{{ url_for('api_rain', station='A1AA20') }}" target="_blank" rel="noopener"><span>平等國小</span><code>A1AA20</code></a>
+        <a href="{{ url_for('rain_readable_page') }}" target="_blank" rel="noopener"><span>免 JavaScript HTML 表格</span><code>/rain/readable</code></a>
+      </div>
+      <p class="rain-api-cache-note">一般資料使用 10 分鐘快取。<a href="{{ url_for('api_rain', refresh=1) }}" target="_blank" rel="noopener">立即強制更新 JSON</a></p>
+    </section>
+
     <footer class="rain-footer">
       <span>資料來源：<a href="https://opendata.cwa.gov.tw/" target="_blank" rel="noopener">中央氣象署開放資料</a></span>
       <span>雨量為測站觀測值；累積時段採滾動計算。</span>

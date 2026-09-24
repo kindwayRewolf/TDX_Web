@@ -1520,11 +1520,14 @@ def api_fare():
 
 @app.route("/api/rain")
 def api_rain():
-    """Return rainfall data for from/to station areas from CWA open data."""
+    """Return all stations, one station by ID, or rainfall for station areas."""
     from_name = request.args.get("from", "").strip()
     to_name   = request.args.get("to", "").strip()
-    if not from_name and not to_name:
-        return jsonify({"error": "Missing 'from' or 'to' parameter"}), 400
+    station_id = request.args.get("station", "").strip()
+    if station_id and (from_name or to_name):
+        return jsonify({"error": "Use either 'station' or 'from'/'to' parameters"}), 400
+    if station_id or (not from_name and not to_name):
+        return api_rain_stations()
     stations = _cwa_fetch_rain_stations()
     result = {}
     if from_name:
@@ -1591,7 +1594,45 @@ def api_rain_stations():
     items.sort(key=lambda item: (item["county"], item["town"], item["name"]))
     with _cache_lock:
         fetched_at = _rain_cache.get("fetched_at", 0)
-    return jsonify({"stations": items, "fetched_at": fetched_at, "api_calls_today": _rain_api_calls_today()})
+    metadata = {"fetched_at": fetched_at, "api_calls_today": _rain_api_calls_today()}
+    station_id = request.args.get("station", "").strip()
+    if station_id:
+        station = next((item for item in items if item["id"].casefold() == station_id.casefold()), None)
+        if station is None:
+            return jsonify({"error": f"Rain station '{station_id}' was not found", **metadata}), 404
+        return jsonify({"station": station, **metadata})
+    return jsonify({"stations": items, **metadata})
+
+
+@app.route("/rain/readable")
+def rain_readable_page():
+    """Render cached rainfall data as a JavaScript-free HTML table."""
+    result = api_rain_stations()
+    if isinstance(result, tuple):
+        response, status = result[0], result[1]
+    else:
+        response, status = result, 200
+    payload = response.get_json(silent=True) or {}
+    stations = payload.get("stations", [])
+    if payload.get("station"):
+        stations = [payload["station"]]
+    default_order = {station_id: index for index, station_id in enumerate(("C0AH70", "CAA030", "C0D590", "A1AA20"))}
+    stations.sort(key=lambda station: (
+        (0, default_order[station["id"]])
+        if station["id"] in default_order
+        else (1, station["county"], station["town"], station["name"])
+    ))
+    fetched_at = payload.get("fetched_at")
+    fetched_at_text = (
+        datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S %Z")
+        if fetched_at else ""
+    )
+    return render_template(
+        "rain_readable.html",
+        stations=stations,
+        error=payload.get("error", ""),
+        fetched_at_text=fetched_at_text,
+    ), status
 
 
 @app.route("/api/mrt/liveboard")

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>雨量資料表</title>
+  <style>
+    :root { color-scheme: light; font-family: "Noto Sans TC", sans-serif; color: #172b32; background: #f4f7f6; }
+    body { margin: 0; padding: 24px; }
+    main { max-width: 1200px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { color: #52666d; font-size: 14px; }
+    a { color: #087e79; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 14px 0; }
+    .table-wrap { overflow-x: auto; border: 1px solid #cad5d7; background: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    caption { padding: 12px; text-align: left; font-weight: 600; }
+    th, td { padding: 9px 10px; border-top: 1px solid #e1e8e9; text-align: left; white-space: nowrap; }
+    th { position: sticky; top: 0; color: #28464d; background: #eaf1f0; }
+    td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+    code { font-family: Consolas, monospace; }
+    .error { padding: 12px; border-left: 3px solid #ae4136; color: #76291f; background: #fff0ed; }
+    @media (max-width: 600px) { body { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>全台雨量觀測資料</h1>
+    <p>Server-rendered HTML table; no JavaScript required. Rainfall amounts are in millimeters.</p>
+    <p><a href="{{ url_for('rain_page') }}">返回雨量首頁</a> · <a href="{{ url_for('api_rain') }}">JSON endpoint</a></p>
+    {% if fetched_at_text %}<p class="meta"><span>資料快取時間：<time>{{ fetched_at_text }}</time></span><span>測站數：{{ stations|length }}</span></p>{% endif %}
+    {% if error %}
+      <p class="error" role="alert">{{ error }}</p>
+    {% else %}
+      <div class="table-wrap">
+        <table id="rain-stations">
+          <caption>雨量測站資料{% if request.args.get('station') %} · 測站 {{ request.args.get('station') }}{% endif %}</caption>
+          <thead>
+            <tr>
+              <th scope="col">測站代碼</th>
+              <th scope="col">測站名稱</th>
+              <th scope="col">縣市</th>
+              <th scope="col">鄉鎮</th>
+              <th scope="col">觀測時間</th>
+              <th scope="col">近 10 分鐘 (mm)</th>
+              <th scope="col">近 1 小時 (mm)</th>
+              <th scope="col">近 3 小時 (mm)</th>
+              <th scope="col">近 6 小時 (mm)</th>
+              <th scope="col">近 12 小時 (mm)</th>
+              <th scope="col">近 24 小時 (mm)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for station in stations %}
+            <tr data-station-id="{{ station.id }}">
+              <td><code>{{ station.id }}</code></td>
+              <td>{{ station.name }}</td>
+              <td>{{ station.county }}</td>
+              <td>{{ station.town }}</td>
+              <td><time>{{ station.obs_time or "—" }}</time></td>
+              <td class="numeric">{{ station.rainfall["10min"] if station.rainfall["10min"] is not none else "—" }}</td>
+              <td class="numeric">{{ station.rainfall["1hr"] if station.rainfall["1hr"] is not none else "—" }}</td>
+              <td class="numeric">{{ station.rainfall["3hr"] if station.rainfall["3hr"] is not none else "—" }}</td>
+              <td class="numeric">{{ station.rainfall["6hr"] if station.rainfall["6hr"] is not none else "—" }}</td>
+              <td class="numeric">{{ station.rainfall["12hr"] if station.rainfall["12hr"] is not none else "—" }}</td>
+              <td class="numeric">{{ station.rainfall["24hr"] if station.rainfall["24hr"] is not none else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>
