@@ -4,7 +4,14 @@
   const HISTORY_KEY = 'kindway_rain_station_history_v1';
   const STATION_KEY = 'kindway_rain_station_id';
   const FILTERS_KEY = 'kindway_rain_filters_v1';
+  const REGION_SELECTIONS_KEY = 'kindway_rain_region_selections_v1';
   const periods = ['10min', '1hr', '3hr', '6hr', '12hr', '24hr'];
+  const regions = [
+    { key: 'songshan', name: '松山', stationId: 'C0AH70' },
+    { key: 'xizhi', name: '國三S010K', stationId: 'CAA030' },
+    { key: 'xinfeng', name: '新豐', stationId: 'C0D590' },
+    { key: 'shilin', name: '平等國小', stationId: 'A1AA20' },
+  ];
   const stationSelect = document.getElementById('station-select');
   const historySelect = document.getElementById('history-select');
   const historyCount = document.getElementById('history-count');
@@ -19,6 +26,7 @@
   const apiCallCount = document.getElementById('api-call-count');
   let savedFilters = {};
   let savedHistory = [];
+  let savedRegionIds = {};
   try {
     savedFilters = JSON.parse(localStorage.getItem(FILTERS_KEY) || '{}');
   } catch {}
@@ -30,9 +38,13 @@
         .slice(0, HISTORY_LIMIT);
     }
   } catch {}
+  try {
+    savedRegionIds = JSON.parse(localStorage.getItem(REGION_SELECTIONS_KEY) || '{}');
+  } catch {}
   const state = {
     stations: [],
     history: savedHistory,
+    regionIds: Object.fromEntries(regions.map(region => [region.key, savedRegionIds[region.key] || region.stationId])),
     selectedId: savedFilters.stationId || localStorage.getItem(STATION_KEY) || '',
     county: savedFilters.county || '',
     town: savedFilters.town || '',
@@ -162,6 +174,38 @@
     }
   }
 
+  function renderRegion(region) {
+    const card = document.querySelector(`[data-region="${region.key}"]`);
+    const stationId = state.regionIds[region.key];
+    const station = state.stations.find(item => item.id === stationId);
+    card.querySelector('[data-region-location]').textContent = station
+      ? `${station.county} · ${station.town}`
+      : `${region.name} · 未知區域`;
+    card.querySelector('[data-region-id]').textContent = stationId;
+    card.querySelector('[data-region-time]').textContent = formatObservationTime(station?.obs_time);
+    card.querySelector('[data-region-rain="10min"]').textContent = formatAmount(station?.rainfall?.['10min']);
+    card.querySelector('[data-region-rain="1hr"]').textContent = formatAmount(station?.rainfall?.['1hr']);
+    card.querySelector('[data-region-rain="24hr"]').textContent = formatAmount(station?.rainfall?.['24hr']);
+  }
+
+  function updateRegionCards() {
+    for (const region of regions) {
+      const select = document.getElementById(`region-${region.key}`);
+      const selectedId = state.regionIds[region.key];
+      select.replaceChildren();
+      addOption(select, '', '選擇測站');
+      for (const station of state.stations) {
+        addOption(select, station.id, `${station.name} · ${station.county} ${station.town} (${station.id})`);
+      }
+      if (selectedId && !state.stations.some(station => station.id === selectedId)) {
+        addOption(select, selectedId, `${region.name} (${selectedId}) · 暫無資料`);
+      }
+      select.value = selectedId;
+      select.disabled = state.stations.length === 0;
+      renderRegion(region);
+    }
+  }
+
   function setStatus(message, kind = 'live') {
     statusText.textContent = message;
     statusDot.classList.toggle('is-error', kind === 'error');
@@ -187,6 +231,7 @@
       if (Number.isFinite(callsToday)) apiCallCount.textContent = `今日 CWA API 呼叫：${callsToday} 次`;
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       state.stations = Array.isArray(data.stations) ? data.stations : [];
+      updateRegionCards();
       updateFilters(true);
       renderHistory();
       for (const control of [countySelect, townSelect, searchInput]) control.disabled = state.stations.length === 0;
@@ -230,6 +275,15 @@
     rememberStation(station);
     historySelect.value = '';
   });
+  for (const region of regions) {
+    document.getElementById(`region-${region.key}`).addEventListener('change', event => {
+      state.regionIds[region.key] = event.target.value;
+      try {
+        localStorage.setItem(REGION_SELECTIONS_KEY, JSON.stringify(state.regionIds));
+      } catch {}
+      renderRegion(region);
+    });
+  }
   refreshButton.addEventListener('click', () => loadStations(true));
   window.addEventListener('beforeunload', () => {
     if (state.refreshTimer) clearTimeout(state.refreshTimer);

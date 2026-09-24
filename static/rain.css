@@ -106,6 +106,30 @@ a { color: inherit; }
 .rain-refresh:hover:not(:disabled) { border-color: var(--rain-aqua); background: #19414a; }
 .rain-refresh:disabled { cursor: wait; opacity: .58; }
 
+.rain-regions { padding: 20px 0; border-bottom: 1px solid var(--rain-border); }
+.rain-section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 12px; }
+.rain-section-heading .rain-eyebrow { margin-bottom: 3px; }
+.rain-section-heading h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.rain-region-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rain-region-card { min-width: 0; padding: 15px; border: 1px solid var(--rain-border); border-radius: 5px; background: linear-gradient(130deg, rgba(19, 52, 65, .92), rgba(12, 35, 46, .9)); }
+.rain-region-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.rain-region-card-header h3 { min-width: 0; margin: 0; font-size: 15px; font-weight: 600; }
+.rain-region-card-header > span { flex: 0 0 auto; color: var(--rain-aqua); font: 10px var(--rain-mono); }
+.rain-region-card > label { display: block; margin-bottom: 5px; color: var(--rain-muted); font-size: 10px; }
+.rain-region-select { width: 100%; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid #2d505b; border-radius: 4px; outline: none; color: var(--rain-text); background: #0d252f; }
+.rain-region-select:focus { border-color: var(--rain-aqua); box-shadow: 0 0 0 2px rgba(103, 216, 203, .12); }
+.rain-region-select:disabled { opacity: .55; }
+.rain-region-select option { color: var(--rain-text); background: #0d252f; }
+.rain-region-metrics { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 8px; margin-top: 14px; }
+.rain-region-metrics > div { min-width: 0; display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 4px; }
+.rain-region-metrics > div > span { grid-column: 1 / -1; color: var(--rain-muted); font-size: 10px; }
+.rain-region-metrics strong { overflow: hidden; color: var(--rain-blue); font: 600 19px var(--rain-mono); text-overflow: ellipsis; }
+.rain-region-current strong { color: var(--rain-aqua); font-size: 25px; }
+.rain-region-metrics small { color: var(--rain-muted); font: 9px var(--rain-mono); }
+.rain-region-observed { margin: 12px 0 0; color: var(--rain-muted); font-size: 10px; }
+.rain-region-observed time { margin-left: 5px; color: var(--rain-text); font: 10px var(--rain-mono); }
+.rain-detail-heading { margin: 22px 0 0; }
+
 .rain-filters {
   display: grid;
   grid-template-columns: minmax(120px, .7fr) minmax(120px, .7fr) minmax(170px, 1fr) minmax(220px, 1.3fr) minmax(180px, 1fr);
@@ -191,6 +215,9 @@ a { color: inherit; }
 @media (max-width: 820px) {
   .rain-header { padding: 0 20px; }
   .rain-main { width: min(100% - 36px, 720px); padding-top: 26px; }
+  .rain-region-grid { gap: 10px; }
+  .rain-region-card { padding: 12px; }
+  .rain-region-metrics { gap: 5px; }
   .rain-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rain-search-field, .rain-station-field, .rain-history-field { grid-column: 1 / -1; }
 }
@@ -204,6 +231,9 @@ a { color: inherit; }
   .rain-intro { align-items: start; flex-direction: column; gap: 16px; padding-bottom: 18px; }
   .rain-intro h1 { font-size: 25px; }
   .rain-update-block { width: 100%; justify-content: space-between; }
+  .rain-region-grid { grid-template-columns: 1fr; }
+  .rain-region-card { padding: 15px; }
+  .rain-region-metrics { grid-template-columns: 1.15fr 1fr 1fr; gap: 8px; }
   .rain-filters { grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 0 17px; }
   .rain-search-field, .rain-station-field, .rain-history-field { grid-column: 1 / -1; }
   .rain-observation-heading { align-items: start; }
