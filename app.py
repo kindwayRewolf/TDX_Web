@@ -1768,6 +1768,74 @@ _MCP_TOOLS = [
 ]
 
 
+_MCP_TRA_NOTE = "Source: TDX (Taiwan Transport Data eXchange), Taiwan Railway (TRA). Station accepts a Chinese name (臺北/台北) or TRA station code."
+_MCP_STATION_PROP = {"type": "string", "description": "TRA station name in Chinese (e.g. 臺北, 花蓮, 松山) or station code (e.g. 1000)"}
+_MCP_TOOLS += [
+    {
+        "name": "tra_find_station",
+        "title": "Find Taiwan Railway station",
+        "description": "Look up TRA station names and codes by partial Chinese name. " + _MCP_TRA_NOTE,
+        "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "tra_timetable",
+        "title": "Taiwan Railway timetable between two stations",
+        "description": "Trains from one TRA station to another on a date (default today, Taiwan time), "
+                       "with departure/arrival time, duration, train type and route. " + _MCP_TRA_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from": _MCP_STATION_PROP,
+                "to": _MCP_STATION_PROP,
+                "date": {"type": "string", "description": "YYYY-MM-DD, default today"},
+                "after": {"type": "string", "description": "Only trains departing at/after HH:MM"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 15},
+            },
+            "required": ["from", "to"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "tra_liveboard",
+        "title": "Taiwan Railway live departures at a station",
+        "description": "Upcoming trains at a TRA station with real-time delay in minutes. "
+                       "direction: 0 = northbound/clockwise, 1 = southbound/counter-clockwise. " + _MCP_TRA_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "station": _MCP_STATION_PROP,
+                "direction": {"type": "integer", "enum": [0, 1]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+            },
+            "required": ["station"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "tra_train",
+        "title": "Taiwan Railway train details and live position",
+        "description": "Stop list, train type and route for a TRA train number, plus its current station and delay. " + _MCP_TRA_NOTE,
+        "inputSchema": {"type": "object", "properties": {"train_no": {"type": "string", "description": "e.g. 408"}}, "required": ["train_no"]},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "tra_fare",
+        "title": "Taiwan Railway adult one-way fares",
+        "description": "Adult one-way fares (NTD) between two TRA stations by train class. " + _MCP_TRA_NOTE,
+        "inputSchema": {"type": "object", "properties": {"from": _MCP_STATION_PROP, "to": _MCP_STATION_PROP}, "required": ["from", "to"]},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "tra_alerts",
+        "title": "Taiwan Railway service alerts",
+        "description": "Current TRA service disruption alerts. " + _MCP_TRA_NOTE,
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+]
+
+
 def _mcp_clamp(value, default: int, upper: int) -> int:
     try:
         return max(1, min(int(value), upper))
@@ -1775,8 +1843,98 @@ def _mcp_clamp(value, default: int, upper: int) -> int:
         return default
 
 
+def _mcp_view(view, path: str, query: dict | None = None, **kwargs) -> dict:
+    """Call an existing Flask JSON view internally; raise RuntimeError on error status."""
+    with app.test_request_context(path, query_string=query or {}):
+        response = app.make_response(view(**kwargs))
+    data = response.get_json(silent=True) or {}
+    if response.status_code >= 400:
+        raise RuntimeError(data.get("error") or f"HTTP {response.status_code}")
+    return data
+
+
+def _mcp_tra_station(value) -> tuple[str, str]:
+    """Resolve a TRA station name or code to (name, code)."""
+    text = str(value or "").strip().replace("台", "臺")
+    if not text:
+        raise ValueError("Station is required")
+    if text in STATIONS:
+        return text, STATIONS[text]
+    names_by_code = {code: name for name, code in STATIONS.items()}
+    if text in names_by_code:
+        return names_by_code[text], text
+    stripped = text.removesuffix("車站").removesuffix("站")
+    if stripped in STATIONS:
+        return stripped, STATIONS[stripped]
+    matches = [name for name in STATIONS if stripped in name]
+    if len(matches) == 1:
+        return matches[0], STATIONS[matches[0]]
+    hint = f" Did you mean: {', '.join(matches[:10])}?" if matches else ""
+    raise ValueError(f"Unknown TRA station '{value}'.{hint}")
+
+
+def _mcp_call_rail_tool(name: str, args: dict) -> dict:
+    if name == "tra_find_station":
+        query = str(args.get("query") or "").strip().replace("台", "臺").removesuffix("站")
+        if not query:
+            raise ValueError("query is required")
+        found = [{"name": n, "code": c} for n, c in STATIONS.items() if query in n or query == c]
+        return {"query": query, "stations": found[:30]}
+
+    if name == "tra_timetable":
+        from_name, from_code = _mcp_tra_station(args.get("from"))
+        to_name, to_code = _mcp_tra_station(args.get("to"))
+        date_str = str(args.get("date") or "").strip() or datetime.now(_RAIN_TIMEZONE).date().isoformat()
+        data = _mcp_view(api_trains_daily, "/api/trains/daily", {"from": from_code, "to": to_code, "date": date_str})
+        trains = data.get("ab", [])
+        after = str(args.get("after") or "").strip()
+        if after:
+            trains = [t for t in trains if t.get("dep", "") >= after]
+        limit = _mcp_clamp(args.get("limit"), 15, 100)
+        return {"from": from_name, "to": to_name, "date": date_str, "total": len(trains), "trains": trains[:limit]}
+
+    if name == "tra_liveboard":
+        station_name, code = _mcp_tra_station(args.get("station"))
+        data = _mcp_view(api_liveboard, "/api/liveboard", {"station": code})
+        boards = data.get("boards", [])
+        if args.get("direction") in (0, 1):
+            boards = [b for b in boards if b.get("direction") == args["direction"]]
+        limit = _mcp_clamp(args.get("limit"), 20, 50)
+        fetched_at = data.get("fetched_at") or 0
+        return {"station": station_name, "code": code, "boards": boards[:limit],
+                "fetched_at": datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).isoformat() if fetched_at else ""}
+
+    if name == "tra_train":
+        train_no = str(args.get("train_no") or "").strip()
+        if not re.fullmatch(r"\d{1,5}", train_no):
+            raise ValueError("train_no must be 1-5 digits")
+        detail = _mcp_view(api_train_detail, f"/api/train/{train_no}", train_no=train_no)
+        try:
+            detail["live"] = _mcp_view(api_trainlive, f"/api/trainlive/{train_no}", train_no=train_no).get("live")
+        except RuntimeError:
+            detail["live"] = None
+        for stop in detail.get("stops", []):
+            stop.pop("phone", None)
+            stop.pop("address", None)
+        return detail
+
+    if name == "tra_fare":
+        from_name, from_code = _mcp_tra_station(args.get("from"))
+        to_name, to_code = _mcp_tra_station(args.get("to"))
+        data = _mcp_view(api_fare, "/api/fare", {"from": from_code, "to": to_code})
+        return {"from": from_name, "to": to_name, "currency": "TWD", "fares": data.get("fares", {})}
+
+    if name == "tra_alerts":
+        alerts = _mcp_view(api_alert, "/api/alert").get("alerts", [])
+        return {"count": len(alerts), "alerts": alerts[:20]}
+
+    raise LookupError(name)
+
+
 def _mcp_call_tool(name: str, args: dict) -> dict:
-    """Run a rain tool; returns structured content or raises ValueError for bad input."""
+    """Run a tool; returns structured content or raises ValueError/RuntimeError for bad input or upstream errors."""
+    if name.startswith("tra_"):
+        return _mcp_call_rail_tool(name, args)
     if name == "get_rain_for_train_stations":
         from_name = str(args.get("from") or "").strip()
         to_name = str(args.get("to") or "").strip()
@@ -1847,8 +2005,9 @@ def _mcp_handle(message) -> dict | None:
         return ok({
             "protocolVersion": requested if requested in _MCP_PROTOCOL_VERSIONS else _MCP_PROTOCOL_VERSIONS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "tdx-web-rain", "title": "Taiwan Rainfall", "version": "1.0.0"},
-            "instructions": "Answer Taiwan rainfall questions with these tools. Always mention the obs_time of the data.",
+            "serverInfo": {"name": "tdx-web", "title": "Taiwan Railway & Rainfall", "version": "1.1.0"},
+            "instructions": "Answer Taiwan Railway (TRA) timetable, live delay, fare, alert and rainfall questions with these tools. "
+                            "Times are Taiwan time (UTC+8). Mention the observation/fetch time of live data.",
         })
     if method == "ping":
         return ok({})
@@ -1878,7 +2037,7 @@ def _mcp_handle(message) -> dict | None:
 
 @app.route("/mcp", methods=["GET", "POST", "DELETE"])
 def mcp_endpoint():
-    """Read-only MCP server exposing CWA rainfall tools."""
+    """Read-only MCP server exposing TRA railway and CWA rainfall tools."""
     if request.method != "POST":
         return jsonify({"error": "Method not allowed; POST JSON-RPC messages"}), 405, {"Allow": "POST"}
     payload = request.get_json(silent=True)
