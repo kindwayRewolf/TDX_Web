@@ -1,0 +1,127 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taiwan Rainfall (CWA O-A0002-001)",
+    "description": "Live rainfall observations from Taiwan Central Weather Administration automatic rain gauges, refreshed every 10 minutes. Amounts are millimeters; null means no data.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "https://tdx-web.onrender.com" }],
+  "paths": {
+    "/api/rain/stations": {
+      "get": {
+        "operationId": "getRainStations",
+        "summary": "Rainfall for one station, one county, or all stations",
+        "description": "Prefer 'station' or 'county'. Calling without parameters returns ~1300 stations (large).",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "query",
+            "required": false,
+            "description": "CWA station ID, e.g. C0AH70 (Songshan, Taipei), 466920 (Taipei), 467410 (Tainan).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "county",
+            "in": "query",
+            "required": false,
+            "description": "County/city name in Traditional Chinese, e.g. 臺北市, 新北市, 花蓮縣, 臺東縣. 台 is accepted for 臺.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rainfall data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "station": { "$ref": "#/components/schemas/Station" },
+                    "stations": { "type": "array", "items": { "$ref": "#/components/schemas/Station" } },
+                    "fetched_at": { "type": "number", "description": "Unix time the server fetched CWA data" },
+                    "api_calls_today": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Station ID not found" },
+          "502": { "description": "CWA upstream error" },
+          "503": { "description": "Server missing CWA API key" }
+        }
+      }
+    },
+    "/api/rain": {
+      "get": {
+        "operationId": "getRainForTrainStations",
+        "summary": "10-minute and 1-hour rainfall near Taiwan Railway (TRA) stations",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "TRA station name in Chinese, e.g. 臺北, 花蓮.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "TRA station name in Chinese.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rainfall near the given train stations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "from": { "$ref": "#/components/schemas/TrainRain" },
+                    "to": { "$ref": "#/components/schemas/TrainRain" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Station": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "county": { "type": "string" },
+          "town": { "type": "string" },
+          "obs_time": { "type": "string", "description": "ISO 8601 observation time (+08:00)" },
+          "rainfall": {
+            "type": "object",
+            "properties": {
+              "10min": { "type": ["number", "null"] },
+              "1hr": { "type": ["number", "null"] },
+              "3hr": { "type": ["number", "null"] },
+              "6hr": { "type": ["number", "null"] },
+              "12hr": { "type": ["number", "null"] },
+              "24hr": { "type": ["number", "null"] }
+            }
+          }
+        }
+      },
+      "TrainRain": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "rain_10min": { "type": "string", "description": "mm, or a dash when unavailable" },
+          "rain_1hr": { "type": "string", "description": "mm, or a dash when unavailable" },
+          "obs_time": { "type": "string" }
+        }
+      }
+    }
+  }
+}

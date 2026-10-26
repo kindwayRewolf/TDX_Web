@@ -1601,6 +1601,9 @@ def api_rain_stations():
         if station is None:
             return jsonify({"error": f"Rain station '{station_id}' was not found", **metadata}), 404
         return jsonify({"station": station, **metadata})
+    county = request.args.get("county", "").strip().replace("台", "臺")
+    if county:
+        items = [item for item in items if item["county"] == county]
     return jsonify({"stations": items, **metadata})
 
 
