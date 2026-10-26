@@ -1,0 +1,43 @@
+name: Publish rain snapshot to GitHub Pages
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: rain-pages
+  cancel-in-progress: true
+
+env:
+  SOURCE: https://tdx-web.onrender.com
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Fetch snapshot from Render
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$SOURCE/rain/summary" -o site/index.html
+          curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$SOURCE/api/rain/stations" -o site/rain.json
+          grep -q "Key stations" site/index.html
+          # Root-relative links point at Flask routes; send them back to Render.
+          sed -i "s#href=\"/#href=\"$SOURCE/#g" site/index.html
+          printf 'User-agent: *\nAllow: /\n' > site/robots.txt
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
