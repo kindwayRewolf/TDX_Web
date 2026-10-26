@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Taiwan Railway fastest journey: direct trains or express then local with one transfer.">
+  <title>台鐵最快轉乘{% if result %} · {{ result.start_name }}→{{ result.end_name }}{% endif %}</title>
+  <style>
+    body { margin: 0; padding: 20px; font-family: "Noto Sans TC", sans-serif; color: #172b32; background: #f4f7f6; }
+    main { max-width: 1000px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    h2 { margin: 22px 0 8px; font-size: 17px; }
+    p { color: #52666d; font-size: 14px; margin: 4px 0; }
+    form { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 14px; margin: 16px 0; padding: 14px; background: #fff; border: 1px solid #cad5d7; align-items: end; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #28464d; }
+    select, input { padding: 6px; font-size: 14px; }
+    button { padding: 8px; font-size: 15px; background: #087e79; color: #fff; border: 0; cursor: pointer; }
+    button.swap { background: #fff; color: #087e79; border: 1px solid #087e79; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid #cad5d7; }
+    th, td { padding: 6px 8px; border-top: 1px solid #e1e8e9; text-align: left; white-space: nowrap; }
+    th { background: #eaf1f0; }
+    td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.best td { background: #e3f4ee; font-weight: 600; }
+    .error { padding: 12px; border-left: 3px solid #ae4136; color: #76291f; background: #fff0ed; }
+    .wrap { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>台鐵最快轉乘 Fastest journey</h1>
+  <p>直達車，或先搭對號車再轉乘區間／區間快（至少預留轉乘時間）；另列出所有區間／區間快方案。</p>
+
+  {% macro station_select(field, label) %}
+  <label>{{ label }}
+    <select name="{{ field }}" required>
+      {% for g in groups %}
+      <optgroup label="{{ g.city }}">
+        {% for code, name in g.stations %}
+        <option value="{{ code }}"{% if form[field] == code %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+  {% endmacro %}
+
+  <form method="get" action="{{ url_for('fastest_page') }}">
+    {{ station_select("start", "起站 Start") }}
+    <button type="submit" name="swap" value="1" class="swap" title="交換起訖站">⇅ 交換起訖</button>
+    {{ station_select("end", "訖站 End") }}
+    <label>日期 Date<input type="date" name="date" value="{{ form.date }}"></label>
+    <label>出發時間 Time<input type="time" name="time" value="{{ form.time }}"></label>
+    <label>對號車種 Express
+      <select name="express">
+        {% for value, text in express_groups.items() %}
+        <option value="{{ value }}"{% if form.express == value %} selected{% endif %}>{{ text }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>轉乘時間（分）Transfer<input type="number" name="transfer" min="0" max="60" value="{{ form.transfer }}"></label>
+    <button type="submit">查詢 Search</button>
+  </form>
+
+  {% macro journey_table(rows, highlight) %}
+  <div class="wrap">
+  <table>
+    <thead><tr>
+      <th scope="col">出發</th><th scope="col">抵達</th><th scope="col">總時間</th>
+      <th scope="col">第一段</th><th scope="col">轉乘站</th><th scope="col">等候</th><th scope="col">第二段</th>
+    </tr></thead>
+    <tbody>
+    {% set fastest_total = rows|map(attribute="total_min")|min if rows else 0 %}
+    {% for j in rows %}
+      <tr class="{{ 'best' if highlight and j.total_min == fastest_total else '' }}">
+        <td>{{ j.dep }}</td><td>{{ j.arr }}</td>
+        <td class="n">{{ j.total_min // 60 }}:{{ "%02d" % (j.total_min % 60) }}</td>
+        <td>{{ j.legs[0].type }} {{ j.legs[0].train_no }}（{{ j.legs[0].dep }}→{{ j.legs[0].arr }}）</td>
+        {% if j.legs|length > 1 %}
+          <td>{{ j.via }}</td><td class="n">{{ j.wait_min }} 分</td>
+          <td>{{ j.legs[1].type }} {{ j.legs[1].train_no }}（{{ j.legs[1].dep }}→{{ j.legs[1].arr }}）</td>
+        {% else %}
+          <td>直達</td><td></td><td></td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="7">查無班次 No trains</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endmacro %}
+
+  {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+  {% elif result %}
+    <p>{{ result.date }} {{ result.time }} 起，<strong>{{ result.start_name }}</strong> → <strong>{{ result.end_name }}</strong>，
+       轉乘至少 {{ result.transfer }} 分鐘。</p>
+    <h2>最快方案（直達或 對號車 → 區間／區間快）</h2>
+    {{ journey_table(result.fastest, True) }}
+    <h2>區間／區間快（直達或 區間 ↔ 區間快 轉乘）</h2>
+    {{ journey_table(result.local, False) }}
+  {% endif %}
+  <p><a href="/">返回首頁</a> · <a href="{{ url_for('turnaround_page') }}">折返規劃</a></p>
+</main>
+</body>
+</html>

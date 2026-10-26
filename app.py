@@ -7,6 +7,7 @@ Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 import collections
 import json
 import logging
+import bisect
 import math
 import os
 import re
@@ -19,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, make_response, render_template, request
+from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
 
 log = logging.getLogger(__name__)
 
@@ -1932,6 +1933,234 @@ def turnaround_page():
     return response
 
 
+# -- Fastest planner: direct trains, or express then local with one transfer --
+_FASTEST_COOKIE = "fastest_opts"
+_FASTEST_EXPRESS = {
+    "all": "全部對號車（自強／普悠瑪／太魯閣／莒光）",
+    "ct": "自強＋莒光",
+    "cg": "莒光",
+}
+
+
+def _is_local_type(type_name: str) -> bool:
+    return type_name.startswith("區間")
+
+
+def _is_express_type(type_name: str, group: str) -> bool:
+    if _is_local_type(type_name):
+        return False
+    if group == "cg":
+        return type_name.startswith("莒光")
+    if group == "ct":
+        return type_name.startswith(("自強", "莒光"))
+    return type_name.startswith(("自強", "莒光", "普悠瑪", "太魯閣"))
+
+
+def _pareto(journeys: list[dict]) -> list[dict]:
+    """Drop journeys that leave earlier but arrive no sooner than another one."""
+    kept, best_arr = [], None
+    for j in sorted(journeys, key=lambda j: (-j["dep_min"], j["arr_min"], len(j["legs"]))):
+        if best_arr is None or j["arr_min"] < best_arr:
+            kept.append(j)
+            best_arr = j["arr_min"]
+    return sorted(kept, key=lambda j: j["dep_min"])
+
+
+def _fastest_journeys(trains: list, start: str, end: str, t0: int, express: str = "all",
+                      transfer: int = 10) -> dict[str, list]:
+    """Return {"fastest": [...], "local": [...]} journeys departing start at/after t0."""
+    names = {code: name for name, code in STATIONS.items()}
+    parsed = []
+    for t in trains:
+        info = t.get("TrainInfo", {})
+        type_name = _tdx_str(info.get("TrainTypeName", ""))
+        parsed.append((info, type_name, _format_train_type(type_name), _train_stop_times(t)))
+
+    def leg(info, type_short, from_code, dep, to_code, arr) -> dict:
+        return {"train_no": info.get("TrainNo", ""), "type": type_short,
+                "from": names.get(from_code, from_code), "dep": _min_to_hhmm(dep),
+                "to": names.get(to_code, to_code), "arr": _min_to_hhmm(arr)}
+
+    def journey(legs: list, dep: int, arr: int, via: str = "", wait: int = 0) -> dict:
+        return {"dep": _min_to_hhmm(dep), "arr": _min_to_hhmm(arr), "dep_min": dep, "arr_min": arr,
+                "total_min": arr - dep, "via": names.get(via, via), "wait_min": wait, "legs": legs}
+
+    direct_express, direct_local = [], []
+    # station -> [(dep, arr_at_end, info, type_short)] for local trains that later stop at `end`
+    local_returns: dict[str, list] = {}
+    for info, type_name, type_short, stops in parsed:
+        idx = {sid: i for i, (sid, _, _) in enumerate(stops)}
+        if end not in idx:
+            continue
+        end_i = idx[end]
+        if start in idx and idx[start] < end_i and stops[idx[start]][2] >= t0:
+            dep, arr = stops[idx[start]][2], stops[end_i][1]
+            j = journey([leg(info, type_short, start, dep, end, arr)], dep, arr)
+            if _is_local_type(type_name):
+                direct_local.append(j)
+            elif _is_express_type(type_name, express):
+                direct_express.append(j)
+        if _is_local_type(type_name):
+            for sid, _, dep in stops[:end_i]:
+                local_returns.setdefault(sid, []).append((dep, stops[end_i][1], info, type_short))
+
+    # Per station: departures sorted, plus suffix index of the earliest arrival at `end` (ties -> later dep).
+    suffix_best: dict[str, tuple[list, list]] = {}
+    for sid, rows in local_returns.items():
+        rows.sort(key=lambda r: r[0])
+        best_idx, best_i = [0] * len(rows), len(rows) - 1
+        for i in range(len(rows) - 1, -1, -1):
+            if (rows[i][1], -rows[i][0]) < (rows[best_i][1], -rows[best_i][0]):
+                best_i = i
+            best_idx[i] = best_i
+        suffix_best[sid] = ([r[0] for r in rows], best_idx)
+
+    def best_local_from(sid: str, ready: int, exclude_no: str):
+        if sid not in suffix_best:
+            return None
+        deps, best_idx = suffix_best[sid]
+        i = bisect.bisect_left(deps, ready)
+        if i >= len(deps):
+            return None
+        row = local_returns[sid][best_idx[i]]
+        if row[2].get("TrainNo") != exclude_no:
+            return row
+        others = [r for r in local_returns[sid][i:] if r[2].get("TrainNo") != exclude_no]
+        return min(others, key=lambda r: (r[1], -r[0])) if others else None
+
+    def transfers(first_ok) -> list[dict]:
+        found = []
+        for info, type_name, type_short, stops in parsed:
+            if not first_ok(type_name):
+                continue
+            start_i = next((i for i, s in enumerate(stops) if s[0] == start), None)
+            if start_i is None or stops[start_i][2] < t0:
+                continue
+            dep = stops[start_i][2]
+            best = None
+            for sid, arr, _ in stops[start_i + 1:]:
+                if sid == end:
+                    break
+                row = best_local_from(sid, arr + transfer, info.get("TrainNo"))
+                if row and (best is None or (row[1], -row[0]) < (best[0], -best[1])):
+                    best = (row[1], row[0], sid, arr, row[2], row[3])
+            if best:
+                back_arr, back_dep, sid, arr, b_info, b_type = best
+                found.append(journey(
+                    [leg(info, type_short, start, dep, sid, arr), leg(b_info, b_type, sid, back_dep, end, back_arr)],
+                    dep, back_arr, via=sid, wait=back_dep - arr))
+        return found
+
+    fastest = _pareto(direct_express + direct_local + transfers(lambda n: _is_express_type(n, express)))
+    local_transfers = transfers(_is_local_type)
+    local_best = {id(j) for j in _pareto(direct_local + local_transfers)}
+    local = sorted(direct_local + [j for j in local_transfers if id(j) in local_best],
+                   key=lambda j: (j["dep_min"], j["arr_min"]))
+    return {"fastest": fastest, "local": local}
+
+
+def _fastest_query(args) -> dict:
+    """Validate request args and compute journeys; raises ValueError on bad input."""
+    start, end = str(args.get("start", "")).strip(), str(args.get("end", "")).strip()
+    if start not in _VALID_CODES or end not in _VALID_CODES:
+        raise ValueError("Invalid start or end station")
+    if start == end:
+        raise ValueError("Start and end must differ")
+    now = datetime.now(_RAIN_TIMEZONE)
+    date_str = str(args.get("date") or now.date().isoformat()).strip()
+    try:
+        date_val = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("date must be YYYY-MM-DD")
+    if not now.date() - timedelta(days=1) <= date_val <= now.date() + timedelta(days=60):
+        raise ValueError("date must be within 1 day ago to 60 days ahead")
+    t0 = _hhmm_to_min(str(args.get("time") or now.strftime("%H:%M")).strip())
+    if t0 is None or not 0 <= t0 < 1440:
+        raise ValueError("time must be HH:MM")
+    express = str(args.get("express") or "all")
+    if express not in _FASTEST_EXPRESS:
+        raise ValueError("express must be all, ct or cg")
+    try:
+        transfer = max(0, min(int(args.get("transfer", 10)), 60))
+    except (TypeError, ValueError):
+        transfer = 10
+    try:
+        limit = max(1, min(int(args.get("limit", 10)), 50))
+    except (TypeError, ValueError):
+        limit = 10
+    found = _fastest_journeys(fetch_daily_trains(date_str), start, end, t0, express, transfer)
+    # Direct local journeys are shared between both lists, so pop defensively.
+    for journeys in found.values():
+        for j in journeys:
+            j.pop("dep_min", None)
+            j.pop("arr_min", None)
+    names = {code: name for name, code in STATIONS.items()}
+    return {
+        "start": start, "start_name": names.get(start, start),
+        "end": end, "end_name": names.get(end, end),
+        "date": date_str, "time": _min_to_hhmm(t0), "express": express, "transfer": transfer,
+        "fastest": found["fastest"][:limit],
+        "local": found["local"][:limit * 2],
+    }
+
+
+@app.route("/api/fastest")
+def api_fastest():
+    """Fastest journeys (direct, or express then local) plus all local options between two stations."""
+    try:
+        return jsonify(_fastest_query(request.args))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except requests.HTTPError as e:
+        return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        log.exception("Unexpected error in /api/fastest")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/fastest")
+def fastest_page():
+    """Server-rendered fastest-route planner (no JavaScript)."""
+    names = {code: name for name, code in STATIONS.items()}
+    groups = [{"city": g["city"], "stations": [(c, names[c]) for c in g["codes"] if c in names]}
+              for g in _STATION_GROUPS]
+    now = datetime.now(_RAIN_TIMEZONE)
+    defaults = {"start": STATIONS.get("松山", ""), "end": STATIONS.get("新竹", ""),
+                "express": "all", "transfer": "10"}
+    try:
+        saved = json.loads(request.cookies.get(_FASTEST_COOKIE, "") or "{}")
+    except ValueError:
+        saved = {}
+    if isinstance(saved, dict):
+        defaults.update({k: str(v)[:16] for k, v in saved.items() if k in defaults})
+    form = {k: request.args.get(k, v) for k, v in defaults.items()}
+    # Date and time are never remembered: always today and now unless given.
+    form["date"] = request.args.get("date", now.date().isoformat())
+    form["time"] = request.args.get("time", now.strftime("%H:%M"))
+    if request.args.get("swap"):
+        form["start"], form["end"] = form["end"], form["start"]
+        return redirect(url_for("fastest_page", **form))
+
+    result, error, status = None, "", 200
+    if form["start"] and form["end"]:
+        try:
+            result = _fastest_query(form)
+        except ValueError as e:
+            error, status = str(e), 400
+        except (requests.HTTPError, RuntimeError):
+            error, status = "TDX timetable is temporarily unavailable, please try again later.", 503
+    response = make_response(render_template(
+        "fastest.html", groups=groups, form=form, result=result, error=error,
+        express_groups=_FASTEST_EXPRESS), status)
+    if result:
+        remembered = {k: str(result[k]) for k in ("start", "end", "express", "transfer")}
+        response.set_cookie(_FASTEST_COOKIE, json.dumps(remembered), max_age=365 * 86400,
+                            samesite="Lax", httponly=True, secure=request.is_secure)
+    return response
+
+
 # -- MCP (Model Context Protocol) server: stateless Streamable HTTP, JSON responses only --
 _MCP_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 _MCP_RAIN_NOTE = "Source: Taiwan CWA O-A0002-001 automatic rain gauges, refreshed every 10 minutes. Units: mm; null = no data."
@@ -2075,6 +2304,28 @@ _MCP_TOOLS += [
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
+    {
+        "name": "tra_fastest",
+        "title": "Fastest TRA journey (express then local)",
+        "description": "Fastest ways from `start` to `end` departing at/after `time`: direct trains, or an express train "
+                       "then one transfer (at least `transfer` min) to a local 區間/區間快 train. Also returns all "
+                       "local-only options (direct, or 區間↔區間快 with one transfer). "
+                       "express: all = 自強/普悠瑪/太魯閣/莒光, ct = 自強+莒光, cg = 莒光 only. " + _MCP_TRA_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start": _MCP_STATION_PROP,
+                "end": _MCP_STATION_PROP,
+                "date": {"type": "string", "description": "YYYY-MM-DD, default today (Taiwan)"},
+                "time": {"type": "string", "description": "Departure time HH:MM, default now"},
+                "express": {"type": "string", "enum": ["all", "ct", "cg"], "default": "all"},
+                "transfer": {"type": "integer", "minimum": 0, "maximum": 60, "default": 10},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+            "required": ["start", "end"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
 ]
 
 
@@ -2182,6 +2433,15 @@ def _mcp_call_rail_tool(name: str, args: dict) -> dict:
         result["feasible_count"] = len(result["plans"])
         result["plans"] = result["plans"][:limit]
         return result
+
+    if name == "tra_fastest":
+        query = {k: args[k] for k in ("date", "time", "express", "transfer", "limit") if args.get(k) is not None}
+        query["start"] = _mcp_tra_station(args.get("start"))[1]
+        query["end"] = _mcp_tra_station(args.get("end"))[1]
+        try:
+            return _fastest_query(query)
+        except (requests.HTTPError, RuntimeError):
+            raise RuntimeError("TDX timetable is temporarily unavailable, please try again later")
 
     raise LookupError(name)
 
