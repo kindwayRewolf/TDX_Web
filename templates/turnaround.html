@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Taiwan Railway turnaround planner: farthest station you can ride to and return from within a time limit.">
+  <title>台鐵折返規劃{% if result %} · {{ result.start_name }}→{{ result.end_name }}{% endif %}</title>
+  <style>
+    body { margin: 0; padding: 20px; font-family: "Noto Sans TC", sans-serif; color: #172b32; background: #f4f7f6; }
+    main { max-width: 1000px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    p { color: #52666d; font-size: 14px; margin: 4px 0; }
+    form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 14px; margin: 16px 0; padding: 14px; background: #fff; border: 1px solid #cad5d7; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #28464d; }
+    select, input { padding: 6px; font-size: 14px; }
+    button { align-self: end; padding: 8px; font-size: 15px; background: #087e79; color: #fff; border: 0; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid #cad5d7; }
+    th, td { padding: 6px 8px; border-top: 1px solid #e1e8e9; text-align: left; white-space: nowrap; }
+    th { background: #eaf1f0; }
+    td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.best td { background: #e3f4ee; font-weight: 600; }
+    tr.tight td { background: #fff6e0; }
+    .error { padding: 12px; border-left: 3px solid #ae4136; color: #76291f; background: #fff0ed; }
+    .wrap { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>台鐵折返規劃 Turnaround planner</h1>
+  <p>從起站進站，搭一班車出去、轉乘、再搭一班車回到訖站出站，在時限內最遠可以到哪一站。</p>
+  <p>Enter at the start station, ride one train out, transfer, ride one train back and exit at the end station within the time limit.</p>
+
+  {% macro station_select(field, label) %}
+  <label>{{ label }}
+    <select name="{{ field }}" required>
+      <option value="">請選擇</option>
+      {% for g in groups %}
+      <optgroup label="{{ g.city }}">
+        {% for code, name in g.stations %}
+        <option value="{{ code }}"{% if form[field] == code %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+  {% endmacro %}
+
+  <form method="get" action="{{ url_for('turnaround_page') }}">
+    {{ station_select("start", "起站（進站）Start") }}
+    {{ station_select("end", "訖站（出站）End") }}
+    <label>日期 Date<input type="date" name="date" value="{{ form.date }}"></label>
+    <label>進站時間 Entry time<input type="time" name="time" value="{{ form.time }}"></label>
+    <label>先往 Direction
+      <select name="dir">
+        {% for value, text in directions.items() %}
+        <option value="{{ value }}"{% if form.dir == value %} selected{% endif %}>{{ text }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>總時限（分）Limit<input type="number" name="budget" min="30" max="360" value="{{ form.budget }}"></label>
+    <label>轉乘步行（分）Transfer<input type="number" name="transfer" min="0" max="60" value="{{ form.transfer }}"></label>
+    <label>出站步行（分）Exit<input type="number" name="exit" min="0" max="60" value="{{ form.exit }}"></label>
+    <label>車種 Trains
+      <select name="types">
+        <option value="local"{% if form.types == "local" %} selected{% endif %}>僅區間／區間快</option>
+        <option value="all"{% if form.types == "all" %} selected{% endif %}>全部車種</option>
+      </select>
+    </label>
+    <button type="submit">查詢 Search</button>
+  </form>
+
+  {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+  {% elif result %}
+    <p>{{ result.date }} {{ result.time }} 由 <strong>{{ result.start_name }}</strong> 進站，
+       {{ result.budget }} 分鐘內須由 <strong>{{ result.end_name }}</strong> 出站
+       （轉乘 {{ result.transfer }} 分、出站 {{ result.exit }} 分；{{ "僅區間／區間快" if result.types == "local" else "全部車種" }}）。
+       可行折返站 {{ result.plans|length }} 個，由遠到近排列；剩餘少於 {{ tight_min }} 分標示為緊湊。</p>
+    {% if result.plans %}
+    <div class="wrap">
+    <table>
+      <thead><tr>
+        <th scope="col">折返站</th><th scope="col">去程車次</th><th scope="col">發車</th><th scope="col">抵達</th>
+        <th scope="col">轉乘等候</th><th scope="col">回程車次</th><th scope="col">發車</th><th scope="col">抵達{{ result.end_name }}</th>
+        <th scope="col">出站</th><th scope="col">總計</th><th scope="col">剩餘</th>
+      </tr></thead>
+      <tbody>
+      {% for p in result.plans %}
+        <tr class="{{ 'best' if loop.first and not p.tight else ('tight' if p.tight else '') }}">
+          <td>{{ p.station }}</td>
+          <td>{{ p.out_type }} {{ p.out_train }}</td><td>{{ p.out_dep }}</td><td>{{ p.out_arr }}</td>
+          <td class="n">{{ p.wait_min }} 分</td>
+          <td>{{ p.back_type }} {{ p.back_train }}</td><td>{{ p.back_dep }}</td><td>{{ p.back_arr }}</td>
+          <td>{{ p.exit_by }}</td>
+          <td class="n">{{ p.total_min // 60 }}:{{ "%02d" % (p.total_min % 60) }}</td>
+          <td class="n">{{ p.slack_min }} 分{% if p.tight %}（緊湊）{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p>時限內沒有可行的折返方案，請放寬時限或改變方向。No feasible turnaround within the limit.</p>
+    {% endif %}
+  {% endif %}
+  <p><a href="/">返回首頁</a></p>
+</main>
+</body>
+</html>

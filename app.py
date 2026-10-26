@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, make_response, render_template, request
 
 log = logging.getLogger(__name__)
 
@@ -1716,6 +1716,222 @@ def rain_summary_page():
     ), status
 
 
+# -- Turnaround planner: ride out one train, transfer, ride back one train within a time budget --
+_TURNAROUND_DIRECTIONS = {"1": "逆行（西部南下／東部北上）", "0": "順行（西部北上／東部南下）", "both": "兩方向"}
+_TURNAROUND_TIGHT_MIN = 5
+_TURNAROUND_COOKIE = "turnaround_opts"
+
+
+def _hhmm_to_min(text: str) -> int | None:
+    try:
+        h, m = text.split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (AttributeError, ValueError):
+        return None
+
+
+def _min_to_hhmm(minutes: int) -> str:
+    return f"{(minutes // 60) % 24:02d}:{minutes % 60:02d}"
+
+
+def _train_stop_times(train: dict) -> list[tuple[str, int, int]]:
+    """Return [(station_id, arrival_min, departure_min)] with times monotonic across midnight."""
+    stops, offset, last = [], 0, -1
+    for s in train.get("StopTimes", []):
+        if s.get("SuspendedFlag"):
+            continue
+        arr = _hhmm_to_min(s.get("ArrivalTime") or s.get("DepartureTime", ""))
+        dep = _hhmm_to_min(s.get("DepartureTime") or s.get("ArrivalTime", ""))
+        if arr is None or dep is None:
+            continue
+        arr += offset
+        if arr < last:
+            offset += 1440
+            arr += 1440
+        dep += offset
+        if dep < arr:
+            offset += 1440
+            dep += 1440
+        last = dep
+        stops.append((s.get("StationID", ""), arr, dep))
+    return stops
+
+
+def _turnaround_plans(trains: list, start: str, end: str, t0: int, direction: str = "both",
+                      budget: int = 180, transfer: int = 10, exit_walk: int = 10,
+                      local_only: bool = True) -> list[dict]:
+    """Best plan per turnaround station, farthest (longest outbound ride) first."""
+    usable = []
+    for t in trains:
+        info = t.get("TrainInfo", {})
+        type_name = _tdx_str(info.get("TrainTypeName", ""))
+        if local_only and not type_name.startswith("區間"):
+            continue
+        usable.append((info, _format_train_type(type_name), _train_stop_times(t)))
+
+    # station -> [(departure_min, arrival_at_end_min, info, type)] for trains that later stop at `end`
+    returns: dict[str, list] = {}
+    for info, type_short, stops in usable:
+        end_idx = next((i for i, s in enumerate(stops) if s[0] == end), None)
+        if end_idx is None:
+            continue
+        for sid, _, dep in stops[:end_idx]:
+            returns.setdefault(sid, []).append((dep, stops[end_idx][1], info, type_short))
+
+    deadline = t0 + budget - exit_walk
+    best: dict[str, dict] = {}
+    for info, type_short, stops in usable:
+        if direction in ("0", "1") and str(info.get("Direction")) != direction:
+            continue
+        start_idx = next((i for i, s in enumerate(stops) if s[0] == start), None)
+        if start_idx is None:
+            continue
+        dep_start = stops[start_idx][2]
+        if dep_start < t0 or dep_start >= deadline:
+            continue
+        for sid, arr, _ in stops[start_idx + 1:]:
+            if arr >= deadline:
+                break
+            if sid in (start, end):
+                continue
+            ready = arr + transfer
+            options = [r for r in returns.get(sid, []) if r[0] >= ready and r[1] <= deadline]
+            if not options:
+                continue
+            back_dep, back_arr, back_info, back_type = min(options, key=lambda r: (r[1], -r[0]))
+            ride = arr - dep_start
+            current = best.get(sid)
+            if current and (current["back_arr_min"], -current["ride_min"]) <= (back_arr, -ride):
+                continue
+            total = back_arr + exit_walk - t0
+            best[sid] = {
+                "code": sid,
+                "direction": str(info.get("Direction")),
+                "out_train": info.get("TrainNo", ""),
+                "out_type": type_short,
+                "out_dep": _min_to_hhmm(dep_start),
+                "out_arr": _min_to_hhmm(arr),
+                "wait_min": back_dep - arr,
+                "back_train": back_info.get("TrainNo", ""),
+                "back_type": back_type,
+                "back_dep": _min_to_hhmm(back_dep),
+                "back_arr": _min_to_hhmm(back_arr),
+                "back_arr_min": back_arr,
+                "exit_by": _min_to_hhmm(back_arr + exit_walk),
+                "ride_min": ride,
+                "total_min": total,
+                "slack_min": budget - total,
+                "tight": budget - total < _TURNAROUND_TIGHT_MIN,
+            }
+    names = {code: name for name, code in STATIONS.items()}
+    plans = sorted(best.values(), key=lambda p: (-p["ride_min"], p["total_min"]))
+    for p in plans:
+        p["station"] = names.get(p["code"], p["code"])
+        p.pop("back_arr_min")
+    return plans
+
+
+def _turnaround_query(args) -> dict:
+    """Validate request args and compute plans; raises ValueError on bad input."""
+    start, end = str(args.get("start", "")).strip(), str(args.get("end", "")).strip()
+    if start not in _VALID_CODES or end not in _VALID_CODES:
+        raise ValueError("Invalid start or end station")
+    if start == end:
+        raise ValueError("Start and end must differ")
+    now = datetime.now(_RAIN_TIMEZONE)
+    date_str = str(args.get("date") or now.date().isoformat()).strip()
+    try:
+        date_val = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("date must be YYYY-MM-DD")
+    if not now.date() - timedelta(days=1) <= date_val <= now.date() + timedelta(days=60):
+        raise ValueError("date must be within 1 day ago to 60 days ahead")
+    time_str = str(args.get("time") or now.strftime("%H:%M")).strip()
+    t0 = _hhmm_to_min(time_str)
+    if t0 is None or not 0 <= t0 < 1440:
+        raise ValueError("time must be HH:MM")
+    direction = str(args.get("dir") or "both")
+    if direction not in _TURNAROUND_DIRECTIONS:
+        raise ValueError("dir must be 0, 1 or both")
+
+    def _int(key: str, default: int, low: int, high: int) -> int:
+        try:
+            return max(low, min(int(args.get(key, default)), high))
+        except (TypeError, ValueError):
+            return default
+
+    budget = _int("budget", 180, 30, 360)
+    transfer = _int("transfer", 10, 0, 60)
+    exit_walk = _int("exit", 10, 0, 60)
+    local_only = str(args.get("types", "local")) != "all"
+    plans = _turnaround_plans(fetch_daily_trains(date_str), start, end, t0, direction,
+                              budget, transfer, exit_walk, local_only)
+    names = {code: name for name, code in STATIONS.items()}
+    return {
+        "start": start, "start_name": names.get(start, start),
+        "end": end, "end_name": names.get(end, end),
+        "date": date_str, "time": _min_to_hhmm(t0), "dir": direction,
+        "budget": budget, "transfer": transfer, "exit": exit_walk,
+        "types": "local" if local_only else "all",
+        "plans": plans,
+    }
+
+
+@app.route("/api/turnaround")
+def api_turnaround():
+    """Farthest turnaround stations reachable from start and back to end within a time budget."""
+    try:
+        return jsonify(_turnaround_query(request.args))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except requests.HTTPError as e:
+        return jsonify({"error": f"TDX API error: {e}"}), 502
+    except RuntimeError:
+        return jsonify({"error": "API rate limit exceeded, please try again later"}), 503
+    except Exception:
+        log.exception("Unexpected error in /api/turnaround")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/turnaround")
+def turnaround_page():
+    """Server-rendered turnaround planner form and results (no JavaScript)."""
+    names = {code: name for name, code in STATIONS.items()}
+    groups = [{"city": g["city"], "stations": [(c, names[c]) for c in g["codes"] if c in names]}
+              for g in _STATION_GROUPS]
+    now = datetime.now(_RAIN_TIMEZONE)
+    defaults = {
+        "start": "", "end": "", "dir": "both",
+        "budget": "180", "transfer": "10", "exit": "10", "types": "local",
+    }
+    # Date and time are not remembered so the page always opens on today and the current time.
+    try:
+        saved = json.loads(request.cookies.get(_TURNAROUND_COOKIE, "") or "{}")
+    except ValueError:
+        saved = {}
+    if isinstance(saved, dict):
+        defaults.update({k: str(v)[:16] for k, v in saved.items() if k in defaults})
+    form = {k: request.args.get(k, v) for k, v in defaults.items()}
+    form["date"] = request.args.get("date", now.date().isoformat())
+    form["time"] = request.args.get("time", now.strftime("%H:%M"))
+    result, error, status = None, "", 200
+    if form["start"] and form["end"] and request.args:
+        try:
+            result = _turnaround_query(request.args)
+        except ValueError as e:
+            error, status = str(e), 400
+        except (requests.HTTPError, RuntimeError):
+            error, status = "TDX timetable is temporarily unavailable, please try again later.", 503
+    response = make_response(render_template(
+        "turnaround.html", groups=groups, form=form, result=result, error=error,
+        directions=_TURNAROUND_DIRECTIONS, tight_min=_TURNAROUND_TIGHT_MIN), status)
+    if result:
+        remembered = {k: str(result[k]) for k in defaults}
+        response.set_cookie(_TURNAROUND_COOKIE, json.dumps(remembered), max_age=365 * 86400,
+                            samesite="Lax", httponly=True, secure=request.is_secure)
+    return response
+
+
 # -- MCP (Model Context Protocol) server: stateless Streamable HTTP, JSON responses only --
 _MCP_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 _MCP_RAIN_NOTE = "Source: Taiwan CWA O-A0002-001 automatic rain gauges, refreshed every 10 minutes. Units: mm; null = no data."
@@ -1833,6 +2049,32 @@ _MCP_TOOLS += [
         "inputSchema": {"type": "object", "properties": {}},
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
+    {
+        "name": "tra_turnaround",
+        "title": "Farthest TRA turnaround within a time limit",
+        "description": "Enter `start` at `time`, ride one train out, transfer (walk `transfer` min), ride one train "
+                       "back and exit at `end` (walk `exit` min) within `budget` minutes. Returns every feasible "
+                       "turnaround station, farthest first, with both trains and spare minutes (tight = under 5 min). "
+                       "dir: 1 = west-coast southbound, 0 = west-coast northbound, both = either. "
+                       "types: local = 區間/區間快 only (default), all = every train. " + _MCP_TRA_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start": _MCP_STATION_PROP,
+                "end": _MCP_STATION_PROP,
+                "date": {"type": "string", "description": "YYYY-MM-DD, default today (Taiwan)"},
+                "time": {"type": "string", "description": "Entry time HH:MM, default now"},
+                "dir": {"type": "string", "enum": ["0", "1", "both"], "default": "both"},
+                "budget": {"type": "integer", "minimum": 30, "maximum": 360, "default": 180},
+                "transfer": {"type": "integer", "minimum": 0, "maximum": 60, "default": 10},
+                "exit": {"type": "integer", "minimum": 0, "maximum": 60, "default": 10},
+                "types": {"type": "string", "enum": ["local", "all"], "default": "local"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+            "required": ["start", "end"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
 ]
 
 
@@ -1927,6 +2169,19 @@ def _mcp_call_rail_tool(name: str, args: dict) -> dict:
     if name == "tra_alerts":
         alerts = _mcp_view(api_alert, "/api/alert").get("alerts", [])
         return {"count": len(alerts), "alerts": alerts[:20]}
+
+    if name == "tra_turnaround":
+        query = {k: args[k] for k in ("date", "time", "dir", "budget", "transfer", "exit", "types") if args.get(k) is not None}
+        query["start"] = _mcp_tra_station(args.get("start"))[1]
+        query["end"] = _mcp_tra_station(args.get("end"))[1]
+        try:
+            result = _turnaround_query(query)
+        except (requests.HTTPError, RuntimeError):
+            raise RuntimeError("TDX timetable is temporarily unavailable, please try again later")
+        limit = _mcp_clamp(args.get("limit"), 10, 50)
+        result["feasible_count"] = len(result["plans"])
+        result["plans"] = result["plans"][:limit]
+        return result
 
     raise LookupError(name)
 
