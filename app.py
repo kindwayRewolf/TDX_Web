@@ -1541,17 +1541,19 @@ def api_rain():
     return jsonify(result)
 
 
-@app.route("/api/rain/stations")
-def api_rain_stations():
-    """Return CWA rainfall observations for the station picker and dashboard."""
-    if not _CWA_API_KEY:
-        return jsonify({"error": "CWA_API_KEY is not configured", "api_calls_today": _rain_api_calls_today()}), 503
+_RAIN_PERIODS = ("10min", "1hr", "3hr", "6hr", "12hr", "24hr")
 
-    stations = _cwa_fetch_rain_stations(force=request.args.get("refresh") == "1")
+
+def _rain_station_items(force: bool = False) -> tuple[list, str, int]:
+    """Return (normalized stations, error message, HTTP status) for CWA rainfall."""
+    if not _CWA_API_KEY:
+        return [], "CWA_API_KEY is not configured", 503
+
+    stations = _cwa_fetch_rain_stations(force=force)
     if not stations:
         with _cache_lock:
             error_code = _rain_cache.get("last_error", "")
-        return jsonify({"error": _cwa_rain_error_message(error_code), "api_calls_today": _rain_api_calls_today()}), 502
+        return [], _cwa_rain_error_message(error_code), 502
 
     periods = {
         "10min": "Past10Min",
@@ -1592,6 +1594,15 @@ def api_rain_stations():
         })
 
     items.sort(key=lambda item: (item["county"], item["town"], item["name"]))
+    return items, "", 200
+
+
+@app.route("/api/rain/stations")
+def api_rain_stations():
+    """Return CWA rainfall observations for the station picker and dashboard."""
+    items, error, status = _rain_station_items(force=request.args.get("refresh") == "1")
+    if error:
+        return jsonify({"error": error, "api_calls_today": _rain_api_calls_today()}), status
     with _cache_lock:
         fetched_at = _rain_cache.get("fetched_at", 0)
     metadata = {"fetched_at": fetched_at, "api_calls_today": _rain_api_calls_today()}
@@ -1703,6 +1714,181 @@ def rain_summary_page():
         county_max=county_max,
         top_n=_RAIN_SUMMARY_TOP_N,
     ), status
+
+
+# -- MCP (Model Context Protocol) server: stateless Streamable HTTP, JSON responses only --
+_MCP_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+_MCP_RAIN_NOTE = "Source: Taiwan CWA O-A0002-001 automatic rain gauges, refreshed every 10 minutes. Units: mm; null = no data."
+_MCP_TOOLS = [
+    {
+        "name": "get_rain",
+        "title": "Taiwan rainfall by station or county",
+        "description": "Live rainfall for one CWA rain gauge (station ID, e.g. C0AH70 = Songshan, 466920 = Taipei) "
+                       "or for all gauges in one county/city (Traditional Chinese, e.g. 臺北市, 花蓮縣). "
+                       "County results are sorted by 24-hour rainfall, wettest first. " + _MCP_RAIN_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "station": {"type": "string", "description": "CWA station ID"},
+                "county": {"type": "string", "description": "County/city name, e.g. 臺北市 (台 also accepted)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+            },
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "get_top_rain",
+        "title": "Wettest rain gauges in Taiwan",
+        "description": "Rain gauges with the highest rainfall for a period, optionally within one county. "
+                       "Use this for questions like 'where is it raining most'. " + _MCP_RAIN_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "period": {"type": "string", "enum": list(_RAIN_PERIODS), "default": "1hr"},
+                "county": {"type": "string", "description": "Optional county/city filter, e.g. 花蓮縣"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            },
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "get_rain_for_train_stations",
+        "title": "Rainfall near Taiwan Railway stations",
+        "description": "10-minute and 1-hour rainfall near Taiwan Railway (TRA) stations, by Chinese station name "
+                       "(e.g. 臺北, 花蓮). " + _MCP_RAIN_NOTE,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from": {"type": "string", "description": "TRA station name"},
+                "to": {"type": "string", "description": "TRA station name"},
+            },
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+]
+
+
+def _mcp_clamp(value, default: int, upper: int) -> int:
+    try:
+        return max(1, min(int(value), upper))
+    except (TypeError, ValueError):
+        return default
+
+
+def _mcp_call_tool(name: str, args: dict) -> dict:
+    """Run a rain tool; returns structured content or raises ValueError for bad input."""
+    if name == "get_rain_for_train_stations":
+        from_name = str(args.get("from") or "").strip()
+        to_name = str(args.get("to") or "").strip()
+        if not from_name and not to_name:
+            raise ValueError("Provide 'from' and/or 'to' station names")
+        stations = _cwa_fetch_rain_stations()
+        result = {}
+        for key, station_name in (("from", from_name), ("to", to_name)):
+            if station_name:
+                result[key] = {"name": station_name, **_find_rain_for(station_name, stations)}
+        return result
+
+    items, error, _ = _rain_station_items()
+    if error:
+        raise RuntimeError(error)
+    with _cache_lock:
+        fetched_at = _rain_cache.get("fetched_at", 0)
+    meta = {"fetched_at": datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).isoformat() if fetched_at else ""}
+    county = str(args.get("county") or "").strip().replace("台", "臺")
+    if county:
+        items = [item for item in items if item["county"] == county]
+        if not items:
+            raise ValueError(f"No rain gauges found for county '{county}'")
+
+    if name == "get_rain":
+        station_id = str(args.get("station") or "").strip()
+        if station_id:
+            station = next((i for i in items if i["id"].casefold() == station_id.casefold()), None)
+            if station is None:
+                raise ValueError(f"Rain station '{station_id}' was not found")
+            return {"station": station, **meta}
+        if not county:
+            raise ValueError("Provide 'station' or 'county' (use get_top_rain for all of Taiwan)")
+        limit = _mcp_clamp(args.get("limit"), 50, 200)
+        ranked = sorted(items, key=lambda i: i["rainfall"].get("24hr") or 0, reverse=True)
+        return {"county": county, "total": len(items), "stations": ranked[:limit], **meta}
+
+    if name == "get_top_rain":
+        period = args.get("period") or "1hr"
+        if period not in _RAIN_PERIODS:
+            raise ValueError(f"period must be one of {', '.join(_RAIN_PERIODS)}")
+        limit = _mcp_clamp(args.get("limit"), 20, 100)
+        wet = [i for i in items if (i["rainfall"].get(period) or 0) > 0]
+        wet.sort(key=lambda i: i["rainfall"][period], reverse=True)
+        return {"period": period, "county": county or "all", "wet_station_count": len(wet),
+                "stations": wet[:limit], **meta}
+
+    raise LookupError(name)
+
+
+def _mcp_handle(message) -> dict | None:
+    if not isinstance(message, dict) or message.get("jsonrpc") != "2.0" or "method" not in message:
+        return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
+    msg_id = message.get("id")
+    if msg_id is None:
+        return None  # notification
+    method = message["method"]
+    params = message.get("params") or {}
+
+    def ok(result: dict) -> dict:
+        return {"jsonrpc": "2.0", "id": msg_id, "result": result}
+
+    def err(code: int, text: str) -> dict:
+        return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": text}}
+
+    if method == "initialize":
+        requested = params.get("protocolVersion")
+        return ok({
+            "protocolVersion": requested if requested in _MCP_PROTOCOL_VERSIONS else _MCP_PROTOCOL_VERSIONS[0],
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "tdx-web-rain", "title": "Taiwan Rainfall", "version": "1.0.0"},
+            "instructions": "Answer Taiwan rainfall questions with these tools. Always mention the obs_time of the data.",
+        })
+    if method == "ping":
+        return ok({})
+    if method == "tools/list":
+        return ok({"tools": _MCP_TOOLS})
+    if method == "tools/call":
+        name = params.get("name", "")
+        args = params.get("arguments") or {}
+        if not isinstance(args, dict):
+            return err(-32602, "arguments must be an object")
+        try:
+            data = _mcp_call_tool(name, args)
+        except LookupError:
+            return err(-32602, f"Unknown tool: {name}")
+        except (ValueError, RuntimeError) as exc:
+            return ok({"content": [{"type": "text", "text": str(exc)}], "isError": True})
+        except Exception:
+            log.exception("MCP tool %s failed", name)
+            return ok({"content": [{"type": "text", "text": "Internal server error"}], "isError": True})
+        return ok({
+            "content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}],
+            "structuredContent": data,
+            "isError": False,
+        })
+    return err(-32601, f"Method not found: {method}")
+
+
+@app.route("/mcp", methods=["GET", "POST", "DELETE"])
+def mcp_endpoint():
+    """Read-only MCP server exposing CWA rainfall tools."""
+    if request.method != "POST":
+        return jsonify({"error": "Method not allowed; POST JSON-RPC messages"}), 405, {"Allow": "POST"}
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}), 400
+    if isinstance(payload, list):
+        responses = [r for r in (_mcp_handle(m) for m in payload[:20]) if r is not None]
+        return (jsonify(responses), 200) if responses else ("", 202)
+    response = _mcp_handle(payload)
+    return (jsonify(response), 200) if response is not None else ("", 202)
 
 
 @app.route("/api/mrt/liveboard")
