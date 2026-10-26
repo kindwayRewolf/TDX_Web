@@ -1557,7 +1557,7 @@ def api_rain_stations():
         "10min": "Past10Min",
         "1hr": "Past1hr",
         "3hr": "Past3hr",
-        "6hr": "Past6hr",
+        "6hr": "Past6Hr",
         "12hr": "Past12hr",
         "24hr": "Past24hr",
     }
@@ -1632,6 +1632,73 @@ def rain_readable_page():
         stations=stations,
         error=payload.get("error", ""),
         fetched_at_text=fetched_at_text,
+    ), status
+
+
+_RAIN_DEFAULT_IDS = ("C0AH70", "CAA030", "C0D590", "A1AA20")
+_RAIN_SUMMARY_TOP_N = 20
+
+
+@app.route("/rain/summary")
+def rain_summary_page():
+    """Compact JavaScript-free rainfall summary sized for LLM/crawler fetchers."""
+    result = api_rain_stations()
+    if isinstance(result, tuple):
+        response, status = result[0], result[1]
+    else:
+        response, status = result, 200
+    payload = response.get_json(silent=True) or {}
+    stations = payload.get("stations", [])
+
+    county = request.args.get("county", "").strip().replace("台", "臺")
+    ids_arg = request.args.get("ids", "").strip()
+    ids = [i.strip().upper() for i in ids_arg.split(",") if i.strip()][:50] if ids_arg else list(_RAIN_DEFAULT_IDS)
+
+    by_id = {s["id"].upper(): s for s in stations}
+    key_stations = [by_id[i] for i in ids if i in by_id]
+    scoped = [s for s in stations if s["county"] == county] if county else stations
+
+    def _top(period: str) -> list:
+        wet = [s for s in scoped if (s["rainfall"].get(period) or 0) > 0]
+        wet.sort(key=lambda s: s["rainfall"][period], reverse=True)
+        return wet[:_RAIN_SUMMARY_TOP_N]
+
+    county_max = []
+    if not county:
+        groups: dict[str, list] = {}
+        for s in stations:
+            groups.setdefault(s["county"], []).append(s)
+        for name, items in sorted(groups.items()):
+            top_1hr = max(items, key=lambda s: s["rainfall"].get("1hr") or 0)
+            top_24hr = max(items, key=lambda s: s["rainfall"].get("24hr") or 0)
+            county_max.append({
+                "county": name,
+                "count": len(items),
+                "max_1hr": top_1hr["rainfall"].get("1hr"),
+                "max_1hr_station": top_1hr,
+                "max_24hr": top_24hr["rainfall"].get("24hr"),
+                "max_24hr_station": top_24hr,
+            })
+
+    fetched_at = payload.get("fetched_at")
+    fetched_at_text = (
+        datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S %Z")
+        if fetched_at else ""
+    )
+    obs_time = next((s["obs_time"] for s in stations if s.get("obs_time")), "")
+    return render_template(
+        "rain_summary.html",
+        error=payload.get("error", ""),
+        fetched_at_text=fetched_at_text,
+        obs_time=obs_time,
+        total=len(stations),
+        county=county,
+        county_stations=sorted(scoped, key=lambda s: (s["town"], s["name"])) if county else [],
+        key_stations=key_stations,
+        top_1hr=_top("1hr"),
+        top_24hr=_top("24hr"),
+        county_max=county_max,
+        top_n=_RAIN_SUMMARY_TOP_N,
     ), status
 
 

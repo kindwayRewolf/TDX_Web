@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="index, follow">
+  <meta name="description" content="Taiwan CWA rainfall summary (O-A0002-001): key stations, top rainfall stations, per-county maximum. Updated every 10 minutes.">
+  <title>雨量摘要 Taiwan Rainfall Summary{% if county %} · {{ county }}{% endif %}</title>
+  <style>
+    body { margin: 0; padding: 20px; font-family: "Noto Sans TC", sans-serif; color: #172b32; background: #f4f7f6; }
+    main { max-width: 1000px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    h2 { margin: 24px 0 8px; font-size: 17px; }
+    p { color: #52666d; font-size: 14px; margin: 4px 0; }
+    a { color: #087e79; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid #cad5d7; }
+    th, td { padding: 6px 8px; border-top: 1px solid #e1e8e9; text-align: left; white-space: nowrap; }
+    th { background: #eaf1f0; }
+    td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    .error { padding: 12px; border-left: 3px solid #ae4136; color: #76291f; background: #fff0ed; }
+  </style>
+</head>
+<body>
+<main>
+{% macro mm(v) %}{{ v if v is not none else "—" }}{% endmacro %}
+{% macro station_table(rows, caption) %}
+  <table>
+    <caption style="text-align:left;padding:6px 0;font-weight:600">{{ caption }}</caption>
+    <thead><tr>
+      <th scope="col">ID</th><th scope="col">測站 Station</th><th scope="col">縣市 County</th><th scope="col">鄉鎮 Town</th>
+      <th scope="col">10min</th><th scope="col">1hr</th><th scope="col">3hr</th><th scope="col">6hr</th><th scope="col">12hr</th><th scope="col">24hr</th>
+    </tr></thead>
+    <tbody>
+    {% for s in rows %}
+      <tr>
+        <td>{{ s.id }}</td><td>{{ s.name }}</td><td>{{ s.county }}</td><td>{{ s.town }}</td>
+        <td class="n">{{ mm(s.rainfall["10min"]) }}</td><td class="n">{{ mm(s.rainfall["1hr"]) }}</td>
+        <td class="n">{{ mm(s.rainfall["3hr"]) }}</td><td class="n">{{ mm(s.rainfall["6hr"]) }}</td>
+        <td class="n">{{ mm(s.rainfall["12hr"]) }}</td><td class="n">{{ mm(s.rainfall["24hr"]) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10">無資料 / none (no rainfall recorded)</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+
+  <h1>台灣雨量摘要 Taiwan Rainfall Summary{% if county %} · {{ county }}{% endif %}</h1>
+  <p>Source: Central Weather Administration (CWA) O-A0002-001. Units: millimeters (mm). Server-rendered, no JavaScript.</p>
+  <p>觀測時間 Observation time: <time>{{ obs_time or "—" }}</time> · 快取時間 Fetched: <time>{{ fetched_at_text or "—" }}</time> · 測站總數 Total stations: {{ total }}</p>
+  <p>Filters: <code>?county=臺北市</code> (all stations in one county) · <code>?ids=C0AH70,466920</code> (specific station IDs).
+     <a href="{{ url_for('rain_readable_page') }}">Full table</a> · <a href="{{ url_for('api_rain') }}">JSON</a> · <a href="{{ url_for('rain_page') }}">雨量首頁</a></p>
+
+  {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+  {% else %}
+    <h2>重點測站 Key stations</h2>
+    {{ station_table(key_stations, "Key stations") }}
+
+    <h2>近 1 小時雨量前 {{ top_n }} 名 Top {{ top_n }} by 1-hour rainfall{% if county %} ({{ county }}){% endif %}</h2>
+    {{ station_table(top_1hr, "Top by 1hr") }}
+
+    <h2>近 24 小時雨量前 {{ top_n }} 名 Top {{ top_n }} by 24-hour rainfall{% if county %} ({{ county }}){% endif %}</h2>
+    {{ station_table(top_24hr, "Top by 24hr") }}
+
+    {% if county %}
+      <h2>{{ county }} 全部測站 All stations ({{ county_stations|length }})</h2>
+      {{ station_table(county_stations, county) }}
+    {% else %}
+      <h2>各縣市最大雨量 Per-county maximum</h2>
+      <table>
+        <thead><tr>
+          <th scope="col">縣市 County</th><th scope="col">測站數 Stations</th>
+          <th scope="col">1hr max (mm)</th><th scope="col">1hr station</th>
+          <th scope="col">24hr max (mm)</th><th scope="col">24hr station</th>
+        </tr></thead>
+        <tbody>
+        {% for c in county_max %}
+          <tr>
+            <td><a href="{{ url_for('rain_summary_page', county=c.county) }}">{{ c.county }}</a></td>
+            <td class="n">{{ c.count }}</td>
+            <td class="n">{{ mm(c.max_1hr) }}</td><td>{{ c.max_1hr_station.name if c.max_1hr else "—" }}</td>
+            <td class="n">{{ mm(c.max_24hr) }}</td><td>{{ c.max_24hr_station.name if c.max_24hr else "—" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endif %}
+</main>
+</body>
+</html>

@@ -27,7 +27,7 @@
   <main>
     <h1>全台雨量觀測資料</h1>
     <p>Server-rendered HTML table; no JavaScript required. Rainfall amounts are in millimeters.</p>
-    <p><a href="{{ url_for('rain_page') }}">返回雨量首頁</a> · <a href="{{ url_for('api_rain') }}">JSON endpoint</a></p>
+    <p><a href="{{ url_for('rain_page') }}">返回雨量首頁</a> · <a href="{{ url_for('rain_summary_page') }}">摘要 (Summary)</a> · <a href="{{ url_for('api_rain') }}">JSON endpoint</a></p>
     {% if fetched_at_text %}<p class="meta"><span>資料快取時間：<time>{{ fetched_at_text }}</time></span><span>測站數：{{ stations|length }}</span></p>{% endif %}
     {% if error %}
       <p class="error" role="alert">{{ error }}</p>
