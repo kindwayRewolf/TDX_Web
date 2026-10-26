@@ -1070,6 +1070,16 @@ def rain_page():
     return render_template("rain.html", cache_ver=_CACHE_VER)
 
 
+@app.route("/Main")
+@app.route("/main")
+def main_page():
+    """Hub page linking every feature; ?train=NNN jumps to the train detail page."""
+    train_no = request.args.get("train", "").strip()
+    if re.fullmatch(r"\d{1,5}", train_no):
+        return redirect(url_for("train_detail", train_no=train_no))
+    return render_template("main.html", train_error=bool(train_no))
+
+
 @app.route("/index2.html")
 def index2():
     stations_list = [{"name": n, "code": c, "cls": _STATION_CLASSES.get(c, -1),

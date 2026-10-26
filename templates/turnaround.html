@@ -103,7 +103,7 @@
       <p>時限內沒有可行的折返方案，請放寬時限或改變方向。No feasible turnaround within the limit.</p>
     {% endif %}
   {% endif %}
-  <p><a href="/">返回首頁</a></p>
+  <p><a href="{{ url_for('main_page') }}">功能總覽</a> · <a href="/">返回首頁</a> · <a href="{{ url_for('fastest_page') }}">最快轉乘</a></p>
 </main>
 </body>
 </html>
