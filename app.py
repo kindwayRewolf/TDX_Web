@@ -5,6 +5,8 @@ Reuses TDX auth/filter logic; serves JSON to the HTML frontend.
 """
 
 import collections
+import csv
+import io
 import json
 import logging
 import bisect
@@ -1743,19 +1745,25 @@ def _rain_station_items(force: bool = False) -> tuple[list, str, int]:
 @app.route("/api/rain/stations")
 def api_rain_stations():
     """Return CWA rainfall observations for the station picker and dashboard."""
-    items, error, status = _rain_station_items(force=request.args.get("refresh") == "1")
+    return _rain_stations_response(
+        force=request.args.get("refresh") == "1",
+        station_id=request.args.get("station", "").strip(),
+        county=request.args.get("county", "").strip().replace("台", "臺"),
+    )
+
+
+def _rain_stations_response(force: bool, station_id: str = "", county: str = ""):
+    items, error, status = _rain_station_items(force=force)
     if error:
         return jsonify({"error": error, "api_calls_today": _rain_api_calls_today()}), status
     with _cache_lock:
         fetched_at = _rain_cache.get("fetched_at", 0)
     metadata = {"fetched_at": fetched_at, "api_calls_today": _rain_api_calls_today()}
-    station_id = request.args.get("station", "").strip()
     if station_id:
         station = next((item for item in items if item["id"].casefold() == station_id.casefold()), None)
         if station is None:
             return jsonify({"error": f"Rain station '{station_id}' was not found", **metadata}), 404
         return jsonify({"station": station, **metadata})
-    county = request.args.get("county", "").strip().replace("台", "臺")
     if county:
         items = [item for item in items if item["county"] == county]
     return jsonify({"stations": items, **metadata})
@@ -1790,6 +1798,71 @@ def rain_readable_page():
         error=payload.get("error", ""),
         fetched_at_text=fetched_at_text,
     ), status
+
+
+def _rain_stations_text(result, title, filename, station_ids=None):
+    if isinstance(result, tuple):
+        response, status = result[0], result[1]
+    else:
+        response, status = result, 200
+    payload = response.get_json()
+    output = io.StringIO(newline="")
+    if "error" in payload:
+        output.write(f"Error: {payload['error']}\n")
+        if "api_calls_today" in payload:
+            output.write(f"API calls today: {payload['api_calls_today']}\n")
+    else:
+        stations = payload.get("stations", [])
+        if "station" in payload:
+            stations = [payload["station"]]
+        missing = []
+        if station_ids is not None:
+            by_id = {station["id"].casefold(): station for station in stations}
+            stations = [by_id[station_id.casefold()] for station_id in station_ids
+                        if station_id.casefold() in by_id]
+            missing = [station_id for station_id in station_ids if station_id.casefold() not in by_id]
+            if missing:
+                log.warning("Rainfall snapshot is missing commute stations: %s", ", ".join(missing))
+                status = 502
+        fetched_at = payload["fetched_at"]
+        fetched_at_text = (
+            datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).isoformat()
+            if fetched_at else "-"
+        )
+        output.write(f"Taiwan Rainfall - {title}\n")
+        output.write("Source: Central Weather Administration (CWA) O-A0002-001.\n")
+        output.write("Units: millimeters (mm). Empty rainfall fields mean missing data, not zero.\n")
+        output.write(f"Fetched: {fetched_at_text}\n")
+        output.write(f"Fetched timestamp: {fetched_at}\n")
+        output.write(f"API calls today: {payload['api_calls_today']}\n")
+        output.write(f"Total stations: {len(stations)}\n")
+        if missing:
+            output.write(f"Error: Stations missing from rainfall data: {', '.join(missing)}\n")
+        output.write("\n")
+        writer = csv.writer(output, delimiter="|", lineterminator="\n")
+        writer.writerow(("ID", "Station", "County", "Town", "Observation time", *_RAIN_PERIODS))
+        for station in stations:
+            writer.writerow((
+                station["id"], station["name"], station["county"], station["town"],
+                station["obs_time"], *(station["rainfall"][period] for period in _RAIN_PERIODS),
+            ))
+    result = make_response(output.getvalue(), status)
+    result.headers["Content-Type"] = "text/plain; charset=utf-8"
+    result.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    return result
+
+
+@app.route("/rain/all.txt")
+def rain_all_text():
+    """Return all normalized rainfall station data as UTF-8 text."""
+    return _rain_stations_text(api_rain_stations(), "All Stations", "all.txt")
+
+
+@app.route("/rain/commute.txt")
+def rain_commute_text():
+    """Return rainfall for the two commute stations."""
+    result = _rain_stations_response(force=request.args.get("refresh") == "1")
+    return _rain_stations_text(result, "Commute Stations", "commute.txt", ("C0AH70", "CAA030"))
 
 
 _RAIN_DEFAULT_IDS = ("C0AH70", "CAA030", "C0D590", "A1AA20")

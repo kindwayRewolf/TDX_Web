@@ -187,6 +187,8 @@ flowchart LR
 | `/train/<train_no>`        | GET           | 列車詳細頁 (Train Detail — Stops + Live)     |
 | `/rain/summary`            | GET           | 雨量摘要 (Rainfall Summary)（`county`, `ids`） |
 | `/rain/summary.txt`        | GET           | UTF-8 純文字雨量摘要 (Plain-text Rainfall Summary)，儲存檔名 `Summary.txt`（`county`, `ids`） |
+| `/rain/all.txt`            | GET           | UTF-8 plain text for every rainfall station, with observation time and all six rainfall periods (`station`, `county`, `refresh=1`) |
+| `/rain/commute.txt`        | GET           | UTF-8 rainfall data for C0AH70 (松山) and CAA030 (國三S010K, 汐止區); supports `refresh=1` |
 | `/chatgpt`                 | GET           | `chatgpt.html`: filename, release date, version, and version-format links |
 | `/chatgpt/version.html`    | GET           | HTML version information |
 | `/chatgpt/version.txt`     | GET           | UTF-8 plain-text version information |
@@ -207,6 +209,19 @@ The ChatGPT pages use the fixed release date `2026-11-10` and version string
 `/rain/summary.txt` dynamically generates the summary from the same cached data as
 `/rain/summary`; it does not write a file on the server. Open the URL to read it,
 or save the response as `Summary.txt`.
+
+`/rain/all.txt` uses the same data and cache as `/api/rain/stations`, including
+all stations by default. Rows are pipe-delimited CSV (fields containing pipes,
+quotes, or newlines are quoted); empty rainfall fields mean missing data, not zero.
+It includes the snapshot timestamp and API call count. `station` filters by
+station ID, `county` filters by county, and `refresh=1` requests a fresh CWA fetch.
+The response is generated on demand; no server file is written. Deploy to Render
+before using its public URL.
+
+`/rain/commute.txt` uses the same cache and pipe-delimited format as
+`/rain/all.txt`, but includes only C0AH70 and CAA030 in that order. If either
+station is absent from the source data, the response identifies the missing ID
+and returns HTTP 502; available station data is still included.
 
 The existing GitHub Pages workflow (`.github/workflows/rain-pages.yml`) fetches
 `/rain/summary.txt` into `Summary.txt` alongside `index.html` and `rain.json`.
