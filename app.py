@@ -1607,6 +1607,84 @@ def api_rain():
 
 
 _RAIN_PERIODS = ("10min", "1hr", "3hr", "6hr", "12hr", "24hr")
+_PAGES_RAIN_URL = "https://kindwayrewolf.github.io/TDX_Web/rain.json"
+
+
+def _pages_rain_snapshot() -> tuple[list, str, str, int]:
+    """Return validated published stations, snapshot time, error, and status."""
+    try:
+        response = requests.get(_PAGES_RAIN_URL, timeout=20)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("stations"), list):
+            raise ValueError("snapshot must contain a stations list")
+        stations = payload["stations"]
+        if any(not isinstance(s, dict) or not isinstance(s.get("id"), str) for s in stations):
+            raise ValueError("snapshot contains invalid station IDs")
+        for station in stations:
+            if any(not isinstance(station.get(field), str)
+                   for field in ("name", "county", "town", "obs_time")):
+                raise ValueError("snapshot contains invalid station details")
+            rainfall = station.get("rainfall")
+            if not isinstance(rainfall, dict) or any(period not in rainfall for period in _RAIN_PERIODS):
+                raise ValueError("snapshot contains incomplete rainfall periods")
+            for period in _RAIN_PERIODS:
+                amount = rainfall[period]
+                if amount is not None and (
+                    isinstance(amount, bool) or not isinstance(amount, (int, float))
+                    or not math.isfinite(amount)
+                ):
+                    raise ValueError("snapshot contains invalid rainfall amounts")
+        fetched_at = payload.get("fetched_at")
+        if (isinstance(fetched_at, bool) or not isinstance(fetched_at, (int, float))
+                or not math.isfinite(fetched_at)):
+            raise ValueError("snapshot contains an invalid fetched_at timestamp")
+        fetched_at_text = datetime.fromtimestamp(fetched_at, _RAIN_TIMEZONE).isoformat()
+        return stations, fetched_at_text, "", 200
+    except requests.Timeout:
+        log.warning("GitHub Pages rainfall snapshot request timed out")
+        return [], "", "GitHub Pages rainfall snapshot request timed out.", 504
+    except requests.RequestException as exc:
+        log.warning("GitHub Pages rainfall snapshot request failed: %s", exc)
+        return [], "", "Could not retrieve the GitHub Pages rainfall snapshot.", 502
+    except (ValueError, TypeError, OverflowError, OSError) as exc:
+        log.warning("Invalid GitHub Pages rainfall snapshot: %s", exc)
+        return [], "", "GitHub Pages returned an invalid rainfall snapshot.", 502
+
+
+@app.route("/chatgpt/rain.html")
+def chatgpt_rain_page():
+    station_id = request.args.get("StationID", "").strip()
+    context = {
+        "station_id": station_id, "station": None, "error": "",
+        "source": _PAGES_RAIN_URL, "fetched_at_text": "", "periods": _RAIN_PERIODS,
+    }
+    if not station_id:
+        context["error"] = "StationID is required. Example: ?StationID=C0AH70"
+        return render_template("chatgpt_rain.html", **context), 400
+    stations, fetched_at_text, error, status = _pages_rain_snapshot()
+    context["error"] = error
+    context["fetched_at_text"] = fetched_at_text
+    if not error:
+        station = next((s for s in stations if s["id"].casefold() == station_id.casefold()), None)
+        if station is None:
+            context["error"] = f"Rain station '{station_id}' was not found in the published snapshot."
+            status = 404
+        else:
+            context["station"] = station
+    return render_template("chatgpt_rain.html", **context), status
+
+
+@app.route("/chatgpt/stationID.html")
+def chatgpt_station_ids_page():
+    stations, fetched_at_text, error, status = _pages_rain_snapshot()
+    return render_template(
+        "chatgpt_station_ids.html",
+        stations=sorted(stations, key=lambda s: s["id"]),
+        fetched_at_text=fetched_at_text,
+        error=error,
+        source=_PAGES_RAIN_URL,
+    ), status
 
 
 def _rain_station_items(force: bool = False) -> tuple[list, str, int]:

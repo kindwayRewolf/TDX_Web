@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rainfall station {{ station_id }}</title>
+</head>
+<body>
+  <h1>Rainfall station {{ station_id }}</h1>
+  <p><a href="{{ url_for('chatgpt_station_ids_page') }}">All station IDs</a></p>
+  <form method="get">
+    <label>StationID <input name="StationID" value="{{ station_id }}" required></label>
+    <button type="submit">Find station</button>
+  </form>
+  <p>Source: <a href="{{ source }}">GitHub Pages rain.json</a> (published snapshot, not live data).</p>
+  {% if error %}
+  <p role="alert">{{ error }}</p>
+  {% elif station %}
+  <dl>
+    <dt>StationID</dt><dd>{{ station.id }}</dd>
+    <dt>Station name</dt><dd>{{ station.name }}</dd>
+    <dt>County</dt><dd>{{ station.county }}</dd>
+    <dt>Town</dt><dd>{{ station.town }}</dd>
+    <dt>Observation time</dt><dd>{{ station.obs_time or "-" }}</dd>
+    <dt>Snapshot fetched</dt><dd>{{ fetched_at_text }}</dd>
+  </dl>
+  <table>
+    <caption>Rainfall in millimeters (mm); "-" means missing data, not zero.</caption>
+    <thead><tr><th scope="col">Period</th><th scope="col">Rainfall (mm)</th></tr></thead>
+    <tbody>
+      {% for period in periods %}
+      <tr><th scope="row">{{ period }}</th><td>{{ station.rainfall[period] if station.rainfall[period] is not none else "-" }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</body>
+</html>

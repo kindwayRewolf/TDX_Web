@@ -191,6 +191,15 @@ flowchart LR
 | `/chatgpt/version.html`    | GET           | HTML version information |
 | `/chatgpt/version.txt`     | GET           | UTF-8 plain-text version information |
 | `/chatgpt/version.json`    | GET           | JSON version information (`filename`, `date`, `version`) |
+| `/chatgpt/rain.html?StationID=C0AH70` | GET | Server-rendered station details from the GitHub Pages `rain.json` snapshot |
+| `/chatgpt/stationID.html` | GET | All rainfall station IDs, names, and locations from the same snapshot, sorted by ID with links to station details |
+
+The station page reads `https://kindwayrewolf.github.io/TDX_Web/rain.json`,
+not the local CWA cache, and shows all six rainfall periods plus observation and
+snapshot times without JavaScript. `StationID` is required; matching ignores case.
+Missing IDs return 400, unknown stations return 404, upstream/invalid-data errors
+return 502, and upstream timeouts return 504. This dynamic route is served by
+Flask (localhost or Render), not GitHub Pages.
 
 The ChatGPT pages use the fixed release date `2026-11-10` and version string
 `0.1`, not the current request date. Each response identifies its own filename.
