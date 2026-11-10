@@ -1097,6 +1097,33 @@ def rain_page():
     return render_template("rain.html", cache_ver=_CACHE_VER)
 
 
+_CHATGPT_RELEASE = {"date": "2026-11-10", "version": "0.1"}
+
+
+@app.route("/chatgpt")
+def chatgpt_page():
+    return render_template("chatgpt.html", filename="chatgpt.html", **_CHATGPT_RELEASE)
+
+
+@app.route("/chatgpt/version.html")
+def chatgpt_version_html():
+    return render_template("chatgpt.html", filename="version.html", **_CHATGPT_RELEASE)
+
+
+@app.route("/chatgpt/version.txt")
+def chatgpt_version_text():
+    response = make_response(
+        f"Filename: version.txt\nDate: {_CHATGPT_RELEASE['date']}\nVersion: {_CHATGPT_RELEASE['version']}\n"
+    )
+    response.headers["Content-Type"] = "text/plain; charset=utf-8"
+    return response
+
+
+@app.route("/chatgpt/version.json")
+def chatgpt_version_json():
+    return jsonify(filename="version.json", **_CHATGPT_RELEASE)
+
+
 @app.route("/Main")
 @app.route("/main")
 def main_page():

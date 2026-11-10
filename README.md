@@ -187,10 +187,23 @@ flowchart LR
 | `/train/<train_no>`        | GET           | 列車詳細頁 (Train Detail — Stops + Live)     |
 | `/rain/summary`            | GET           | 雨量摘要 (Rainfall Summary)（`county`, `ids`） |
 | `/rain/summary.txt`        | GET           | UTF-8 純文字雨量摘要 (Plain-text Rainfall Summary)，儲存檔名 `Summary.txt`（`county`, `ids`） |
+| `/chatgpt`                 | GET           | `chatgpt.html`: filename, release date, version, and version-format links |
+| `/chatgpt/version.html`    | GET           | HTML version information |
+| `/chatgpt/version.txt`     | GET           | UTF-8 plain-text version information |
+| `/chatgpt/version.json`    | GET           | JSON version information (`filename`, `date`, `version`) |
+
+The ChatGPT pages use the fixed release date `2026-11-10` and version string
+`0.1`, not the current request date. Each response identifies its own filename.
 
 `/rain/summary.txt` dynamically generates the summary from the same cached data as
 `/rain/summary`; it does not write a file on the server. Open the URL to read it,
 or save the response as `Summary.txt`.
+
+The existing GitHub Pages workflow (`.github/workflows/rain-pages.yml`) fetches
+`/rain/summary.txt` into `Summary.txt` alongside `index.html` and `rain.json`.
+It runs on the existing ten-minute schedule or manually, validates the text
+summary title before publishing, and links the Pages summary to the local
+`Summary.txt` snapshot. The workflow changes must be pushed before they take effect.
 
 ### JSON API 路由 (JSON API Routes)
 

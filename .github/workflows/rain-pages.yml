@@ -29,8 +29,11 @@ jobs:
           set -euo pipefail
           mkdir -p site
           curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$SOURCE/rain/summary" -o site/index.html
+          curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$SOURCE/rain/summary.txt" -o site/Summary.txt
           curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$SOURCE/api/rain/stations" -o site/rain.json
           grep -q "Key stations" site/index.html
+          grep -q "^Taiwan Rainfall Summary" site/Summary.txt
+          sed -i 's#href="/rain/summary.txt"#href="Summary.txt"#g' site/index.html
           # Root-relative links point at Flask routes; send them back to Render.
           sed -i "s#href=\"/#href=\"$SOURCE/#g" site/index.html
           printf 'User-agent: *\nAllow: /\n' > site/robots.txt

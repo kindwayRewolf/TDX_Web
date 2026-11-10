@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ filename }}</title>
+</head>
+<body>
+  <h1>{{ filename }}</h1>
+  <p>Date: {{ date }}</p>
+  <p>Version: {{ version }}</p>
+  {% if filename == "chatgpt.html" %}
+  <nav aria-label="Version formats">
+    <a href="{{ url_for('chatgpt_version_html') }}">version.html</a>
+    <a href="{{ url_for('chatgpt_version_text') }}">version.txt</a>
+    <a href="{{ url_for('chatgpt_version_json') }}">version.json</a>
+  </nav>
+  {% endif %}
+</body>
+</html>
