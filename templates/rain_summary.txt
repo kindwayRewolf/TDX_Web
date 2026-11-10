@@ -1,0 +1,48 @@
+{% macro mm(v) -%}
+{{ v if v is not none else "-" }}
+{%- endmacro %}
+{% macro station_table(rows) -%}
+ID | Station | County | Town | 10min | 1hr | 3hr | 6hr | 12hr | 24hr
+{% for s in rows -%}
+{{ s.id }} | {{ s.name }} | {{ s.county }} | {{ s.town }} | {{ mm(s.rainfall["10min"]) }} | {{ mm(s.rainfall["1hr"]) }} | {{ mm(s.rainfall["3hr"]) }} | {{ mm(s.rainfall["6hr"]) }} | {{ mm(s.rainfall["12hr"]) }} | {{ mm(s.rainfall["24hr"]) }}
+{% else -%}
+No data / no rainfall recorded.
+{% endfor -%}
+{%- endmacro -%}
+Taiwan Rainfall Summary{% if county %} - {{ county }}{% endif %}
+
+Source: Central Weather Administration (CWA) O-A0002-001.
+Units: millimeters (mm).
+Observation time: {{ obs_time or "-" }}
+Fetched: {{ fetched_at_text or "-" }}
+Total stations: {{ total }}
+Filters: ?county=COUNTY or ?ids=C0AH70,466920
+{% if error %}
+Error: {{ error }}
+{% else %}
+Key stations
+============
+{{ station_table(key_stations) }}
+
+Top {{ top_n }} by 1-hour rainfall
+===============================
+{{ station_table(top_1hr) }}
+
+Top {{ top_n }} by 24-hour rainfall
+================================
+{{ station_table(top_24hr) }}
+{% if county %}
+All stations in {{ county }} ({{ county_stations|length }})
+===============================
+{{ station_table(county_stations) }}
+{% else %}
+Per-county maximum
+==================
+County | Stations | 1hr max (mm) | 1hr station | 24hr max (mm) | 24hr station
+{% for c in county_max -%}
+{{ c.county }} | {{ c.count }} | {{ mm(c.max_1hr) }} | {{ c.max_1hr_station.name if c.max_1hr else "-" }} | {{ mm(c.max_24hr) }} | {{ c.max_24hr_station.name if c.max_24hr else "-" }}
+{% else -%}
+No data.
+{% endfor -%}
+{% endif %}
+{% endif %}

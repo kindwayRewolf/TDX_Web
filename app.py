@@ -290,7 +290,7 @@ _BUS_CITIES = {
 _BUS_DEFAULT_CITIES = ["Taipei", "NewTaipei"]
 
 # ─── 車站代碼表 ────────────────────────────────────────────────────────────
-# Populated at startup by _load_seed_data() from seed_data.json,
+# Populated at startup from the station cache or bundled seed,
 # then overwritten by _load_stations_from_api() on each successful TDX fetch.
 STATIONS: dict[str, str] = {}
 
@@ -487,48 +487,78 @@ def _find_rain_for(name: str, stations: list) -> dict:
 
 # ─── Seed data loader ───────────────────────────────────────────────────────
 _SEED_FILE            = Path(__file__).parent / "seed_data.json"
+_SEED_CACHE_FILE      = Path(__file__).parent / "seed_data.cache.json"
 _TIMETABLE_CACHE_FILE = Path(__file__).parent / "timetable_cache.json"
 _seed_generated_at: str = ""   # set by _load_seed_data(); used by startup thread
 
 def _load_seed_data() -> None:
-    """Load bootstrap station data from seed_data.json into module globals.
-    Called once at startup; on miss the globals stay empty until API loads."""
+    """Load runtime station cache, falling back to the bundled seed."""
     global _seed_generated_at
-    try:
-        seed = json.loads(_SEED_FILE.read_text(encoding="utf-8"))
-        _seed_generated_at = seed.get("generated_at", "")
-        if seed.get("stations"):
-            STATIONS.clear()
-            STATIONS.update(
-                {n: c for n, c in seed["stations"].items()
-                 if c not in _HIDDEN_STATION_IDS}
-            )
-        if seed.get("station_classes"):
-            _STATION_CLASSES.clear()
-            _STATION_CLASSES.update(
-                {k: int(v) for k, v in seed["station_classes"].items()
-                 if k not in _HIDDEN_STATION_IDS}
-            )
-        if seed.get("station_groups"):
-            _STATION_GROUPS.clear()
-            for g in seed["station_groups"]:
-                codes = [c for c in g.get("codes", []) if c not in _HIDDEN_STATION_IDS]
+    for source in (_SEED_CACHE_FILE, _SEED_FILE):
+        try:
+            seed = json.loads(source.read_text(encoding="utf-8"))
+            if not isinstance(seed, dict):
+                raise ValueError("station data must be an object")
+            stations = seed.get("stations")
+            if not isinstance(stations, dict) or not stations:
+                raise ValueError("stations must be a non-empty object")
+            if any(not isinstance(n, str) or not n or not isinstance(c, str) or not c
+                   for n, c in stations.items()):
+                raise ValueError("station names and codes must be non-empty strings")
+            generated_at = seed.get("generated_at", "")
+            if not isinstance(generated_at, str):
+                raise ValueError("generated_at must be a string")
+            if generated_at:
+                datetime.fromisoformat(generated_at)
+            for field in ("station_classes", "station_phones", "station_addresses"):
+                if not isinstance(seed.get(field, {}), dict):
+                    raise ValueError(f"{field} must be an object")
+            for field in ("station_phones", "station_addresses"):
+                if any(not isinstance(value, str) for value in seed.get(field, {}).values()):
+                    raise ValueError(f"{field} values must be strings")
+            classes = {
+                k: int(v) for k, v in seed.get("station_classes", {}).items()
+                if k not in _HIDDEN_STATION_IDS
+            }
+            raw_groups = seed.get("station_groups", [])
+            if not isinstance(raw_groups, list):
+                raise ValueError("station_groups must be a list")
+            groups = []
+            for group in raw_groups:
+                if (not isinstance(group, dict) or not isinstance(group.get("city"), str)
+                        or not isinstance(group.get("codes"), list)
+                        or any(not isinstance(c, str) for c in group["codes"])):
+                    raise ValueError("station groups must contain a city and station codes")
+                codes = [c for c in group["codes"] if c not in _HIDDEN_STATION_IDS]
                 if codes:
-                    _STATION_GROUPS.append({"city": g["city"], "codes": codes})
-        if seed.get("station_phones"):
+                    groups.append({"city": group["city"], "codes": codes})
+            stations = {n: c for n, c in stations.items() if c not in _HIDDEN_STATION_IDS}
+            if not stations:
+                raise ValueError("station data contains no visible stations")
+        except FileNotFoundError:
+            log.info("Station data %s not found; trying next source", source.name)
+            continue
+        except (OSError, ValueError, TypeError) as exc:
+            log.warning("Cannot load station data %s: %s; trying next source", source.name, exc)
+            continue
+        with _cache_lock:
+            _seed_generated_at = generated_at
+            STATIONS.clear()
+            STATIONS.update(stations)
+            _STATION_CLASSES.clear()
+            _STATION_CLASSES.update(classes)
+            _STATION_GROUPS.clear()
+            _STATION_GROUPS.extend(groups)
             _STATION_PHONES.clear()
-            _STATION_PHONES.update(seed["station_phones"])
-        if seed.get("station_addresses"):
+            _STATION_PHONES.update(seed.get("station_phones", {}))
             _STATION_ADDRESSES.clear()
-            _STATION_ADDRESSES.update(seed["station_addresses"])
+            _STATION_ADDRESSES.update(seed.get("station_addresses", {}))
         print(
             f"[seed] Loaded {len(STATIONS)} stations, "
-            f"{len(_STATION_GROUPS)} groups from {_SEED_FILE.name}"
+            f"{len(_STATION_GROUPS)} groups from {source.name}"
         )
-    except FileNotFoundError:
-        print(f"[seed] {_SEED_FILE.name} not found — waiting for API load")
-    except Exception as exc:
-        print(f"[seed] Load failed ({exc}) — waiting for API load")
+        return
+    log.warning("No usable station cache or bundled seed; waiting for API load")
 
 
 # ─── Timetable disk cache ──────────────────────────────────────────────────
@@ -775,10 +805,7 @@ def _load_stations_from_api() -> bool:
 
         print(f"[stations] Loaded {len(new)} stations, {len(groups)} groups from TDX API")
 
-        # Persist updated data to seed file so next startup is always fresh.
-        # Always save the full merged _STATION_CLASSES (243 entries) — not just
-        # new_classes from the API (~32 entries for cls 0/1 only), which would
-        # overwrite the seed and lose 二等~簡易 class data on the next cold start.
+        # Persist merged classes to the runtime cache, never the bundled seed.
         try:
             seed_out = {
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -788,15 +815,15 @@ def _load_stations_from_api() -> bool:
                 "station_phones":    dict(_STATION_PHONES),
                 "station_addresses": dict(_STATION_ADDRESSES),
             }
-            tmp = _SEED_FILE.with_suffix(".tmp")
+            tmp = _SEED_CACHE_FILE.with_suffix(".tmp")
             tmp.write_text(
                 json.dumps(seed_out, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            tmp.replace(_SEED_FILE)
-            print(f"[seed] Wrote {_SEED_FILE.name} ({len(new)} stations, {len(seed_out['station_classes'])} classes)")
-        except Exception as write_exc:
-            print(f"[seed] Write failed ({write_exc})")
+            tmp.replace(_SEED_CACHE_FILE)
+            print(f"[seed] Wrote {_SEED_CACHE_FILE.name} ({len(new)} stations, {len(seed_out['station_classes'])} classes)")
+        except OSError as write_exc:
+            log.warning("Station cache write failed (%s): %s", _SEED_CACHE_FILE.name, write_exc)
 
         return True
     except Exception as exc:
@@ -1126,7 +1153,7 @@ def _run_station_load_once() -> None:
 # doesn't race with these 2 calls and blow the 5-req/min limit.
 def _startup_station_load():
     time.sleep(5)   # brief pause — lets the server finish binding before calling TDX
-    # Skip API refresh if seed_data.json was written in the last 24 hours.
+    # Skip API refresh if the loaded station data is less than 24 hours old.
     # Station data (names, codes, classes) changes extremely rarely, so an
     # up-to-date seed avoids unnecessary TDX API calls on every restart.
     if _seed_generated_at:
@@ -1664,9 +1691,7 @@ _RAIN_DEFAULT_IDS = ("C0AH70", "CAA030", "C0D590", "A1AA20")
 _RAIN_SUMMARY_TOP_N = 20
 
 
-@app.route("/rain/summary")
-def rain_summary_page():
-    """Compact JavaScript-free rainfall summary sized for LLM/crawler fetchers."""
+def _rain_summary_context():
     result = api_rain_stations()
     if isinstance(result, tuple):
         response, status = result[0], result[1]
@@ -1711,8 +1736,7 @@ def rain_summary_page():
         if fetched_at else ""
     )
     obs_time = next((s["obs_time"] for s in stations if s.get("obs_time")), "")
-    return render_template(
-        "rain_summary.html",
+    return dict(
         error=payload.get("error", ""),
         fetched_at_text=fetched_at_text,
         obs_time=obs_time,
@@ -1725,6 +1749,23 @@ def rain_summary_page():
         county_max=county_max,
         top_n=_RAIN_SUMMARY_TOP_N,
     ), status
+
+
+@app.route("/rain/summary")
+def rain_summary_page():
+    """Compact JavaScript-free rainfall summary sized for LLM/crawler fetchers."""
+    context, status = _rain_summary_context()
+    return render_template("rain_summary.html", **context), status
+
+
+@app.route("/rain/summary.txt")
+def rain_summary_text():
+    """Serve the rainfall summary as UTF-8 plain text."""
+    context, status = _rain_summary_context()
+    response = make_response(render_template("rain_summary.txt", **context), status)
+    response.headers["Content-Type"] = "text/plain; charset=utf-8"
+    response.headers["Content-Disposition"] = 'inline; filename="Summary.txt"'
+    return response
 
 
 # -- Turnaround planner: ride out one train, transfer, ride back one train within a time budget --

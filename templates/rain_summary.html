@@ -49,7 +49,7 @@
   <p>Source: Central Weather Administration (CWA) O-A0002-001. Units: millimeters (mm). Server-rendered, no JavaScript.</p>
   <p>觀測時間 Observation time: <time>{{ obs_time or "—" }}</time> · 快取時間 Fetched: <time>{{ fetched_at_text or "—" }}</time> · 測站總數 Total stations: {{ total }}</p>
   <p>Filters: <code>?county=臺北市</code> (all stations in one county) · <code>?ids=C0AH70,466920</code> (specific station IDs).
-     <a href="{{ url_for('rain_readable_page') }}">Full table</a> · <a href="{{ url_for('api_rain') }}">JSON</a> · <a href="{{ url_for('rain_page') }}">雨量首頁</a></p>
+     <a href="{{ url_for('rain_summary_text', **request.args.to_dict()) }}">Summary.txt</a> · <a href="{{ url_for('rain_readable_page') }}">Full table</a> · <a href="{{ url_for('api_rain') }}">JSON</a> · <a href="{{ url_for('rain_page') }}">雨量首頁</a></p>
 
   {% if error %}
     <p class="error" role="alert">{{ error }}</p>

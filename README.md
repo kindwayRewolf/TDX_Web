@@ -43,7 +43,8 @@ TDX_Deploy/Render/
 ├── render.yaml               # Render.com 部署設定 (Deploy Config)
 ├── .env                      # TDX API 金鑰 (Keys)（不提交版控）
 ├── .env.txt                  # 環境變數範本 (Env Template)
-├── seed_data.json            # 車站種子資料 (Station Seed Data)（自動更新）
+├── seed_data.json            # 車站種子資料 (Bundled Station Seed; read-only at runtime)
+├── seed_data.cache.json      # 自動更新的車站快取 (Runtime Station Cache; ignored by Git)
 ├── timetable_cache.json      # 磁碟持久化快取 (Disk Cache)
 ├── templates/
 │   ├── index.html            # 主頁模板 (Main Page Template)
@@ -59,6 +60,16 @@ TDX_Deploy/Render/
 
 ---
 
+### Station seed and runtime cache
+
+Startup loads `seed_data.cache.json` first. If it is missing, unreadable, or
+invalid, the application logs the reason and falls back to the tracked
+`seed_data.json`, allowing a fresh deployment to start with station data.
+Station data older than 24 hours is refreshed by the existing startup API loader.
+Successful API refreshes atomically replace only `seed_data.cache.json`; they
+never overwrite the bundled seed. The cache and its temporary file are ignored
+by Git. Update `seed_data.json` deliberately when refreshing the bundled baseline.
+
 ## 架構流程 (Architecture Flow)
 
 ### 頁面載入序列 (Page Load Sequence)
@@ -71,7 +82,7 @@ sequenceDiagram
     participant T as TDX API
 
     B->>F: GET /
-    F->>D: 載入 seed_data.json (啟動 Startup)
+    F->>D: 載入 seed_data.cache.json，否則 seed_data.json (Startup)
     F->>D: 載入 timetable_cache.json (啟動 Startup)
     F-->>B: index.html + STATIONS + CITY_STATIONS (Jinja2)
 
@@ -144,7 +155,7 @@ flowchart LR
     end
 
     subgraph Disk["磁碟 JSON 檔案 (Disk JSON Files)"]
-        D1[seed_data.json]
+        D1[seed_data.cache.json / seed_data.json fallback]
         D2[timetable_cache.json]
     end
 
@@ -174,6 +185,12 @@ flowchart LR
 |----------------------------|---------------|---------------------------------------------|
 | `/`                        | GET           | 主頁時刻表 (Main Timetable Page)             |
 | `/train/<train_no>`        | GET           | 列車詳細頁 (Train Detail — Stops + Live)     |
+| `/rain/summary`            | GET           | 雨量摘要 (Rainfall Summary)（`county`, `ids`） |
+| `/rain/summary.txt`        | GET           | UTF-8 純文字雨量摘要 (Plain-text Rainfall Summary)，儲存檔名 `Summary.txt`（`county`, `ids`） |
+
+`/rain/summary.txt` dynamically generates the summary from the same cached data as
+`/rain/summary`; it does not write a file on the server. Open the URL to read it,
+or save the response as `Summary.txt`.
 
 ### JSON API 路由 (JSON API Routes)
 
@@ -211,7 +228,7 @@ flowchart LR
 
 | 函式 (Function)                    | 說明 (Description)                                                                 |
 |------------------------------------|-----------------------------------------------------------------------------------|
-| `_load_seed_data()`                | 啟動 (Startup) 時從 `seed_data.json` 載入車站種子資料 (Seed Data)                    |
+| `_load_seed_data()`                | 啟動時優先載入車站快取，失敗則使用 `seed_data.json` (Runtime cache with bundled seed fallback) |
 | `_load_disk_caches()`              | 啟動時從 `timetable_cache.json` 恢復快取 (Restore Caches)                           |
 | `_load_stations_from_api()`        | 從 TDX v2 取得所有台鐵車站，更新全域變數 (Global Variables)                          |
 | `_load_branch_lines()`             | 從 TDX StationOfLine API 取得支線 (Branch Line) 車站分組                            |
@@ -431,6 +448,8 @@ cp .env.txt .env
 python app.py
 # → http://localhost:5000
 ```
+
+Windows 需要 `requirements.txt` 中的 `tzdata` 套件，供 `ZoneInfo("Asia/Taipei")` 載入時區資料 (Windows requires `tzdata` to load IANA time zone data).
 
 ### 正式環境部署 (Production — Render.com)
 

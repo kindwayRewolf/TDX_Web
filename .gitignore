@@ -16,3 +16,27 @@
 **/*.ini
 **/*.spec
 **/.env
+
+# Python bytecode and tooling caches
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# Additional virtual environments
+venv/
+env/
+
+# Local environment settings; keep credential-free templates
+.env.*
+!.env.example
+!.env.sample
+!.env.txt
+
+# Runtime station cache; seed_data.json remains tracked
+/seed_data.cache.json
+/seed_data.cache.tmp
